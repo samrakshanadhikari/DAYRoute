@@ -21,6 +21,8 @@ const travelTimes = {
   'Home->Alkek Library': 16,
 };
 
+const dayStart = 14 * 60 + 5;
+
 const seedTasks = [
   { id: 'architecture', title: 'Architecture HW', duration: 45, deadline: 'Today 3:00 PM', location: locations.library, priority: 'High', complete: false },
   { id: 'lunch', title: 'Lunch', duration: 20, deadline: 'Flexible', location: locations.nearby, priority: 'Medium', complete: false },
@@ -28,16 +30,31 @@ const seedTasks = [
   { id: 'cv', title: 'CV Assignment', duration: 90, deadline: 'Tomorrow', location: locations.home, priority: 'Medium', complete: false },
 ];
 
-const commitments = [
-  { id: 'class', title: 'Class', startsAt: 210, location: locations.ingram, fixed: true },
+const seedCommitments = [
+  { id: 'class', title: 'Data Structures Class', startsAt: 15 * 60 + 30, duration: 75, location: locations.ingram, fixed: true },
+  { id: 'lab', title: 'Project Lab', startsAt: 18 * 60 + 30, duration: 60, location: locations.library, fixed: true },
 ];
 
 const pad = (value) => String(value).padStart(2, '0');
 const formatTime = (minutes) => {
-  const hour24 = Math.floor(minutes / 60);
+  const hour24 = Math.floor(minutes / 60) % 24;
   const minute = minutes % 60;
-  const hour = hour24 > 12 ? hour24 - 12 : hour24;
-  return `${hour}:${pad(minute)}`;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const hour = hour24 % 12 || 12;
+  return `${hour}:${pad(minute)} ${period}`;
+};
+
+const parseClockTime = (value) => {
+  const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return 15 * 60 + 30;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2] || 0);
+  const period = match[3]?.toLowerCase();
+
+  if (period === 'pm' && hour < 12) hour += 12;
+  if (period === 'am' && hour === 12) hour = 0;
+  return hour * 60 + minute;
 };
 
 const travelService = {
@@ -47,26 +64,47 @@ const travelService = {
   },
 };
 
-function planDay(tasks, scenario) {
+function planDay(tasks, commitments, scenario) {
   const openTasks = tasks.filter((task) => !task.complete);
   const ordered = [...openTasks].sort((a, b) => {
     const score = { High: 0, Medium: 1, Low: 2 };
     return score[a.priority] - score[b.priority];
   });
 
-  const classCommitment = commitments[0];
+  const sortedCommitments = [...commitments].sort((a, b) => a.startsAt - b.startsAt);
+  const classCommitment = sortedCommitments[0];
   const homework = ordered.find((task) => task.id === 'architecture');
   const lunch = ordered.find((task) => task.id === 'lunch');
   const afterClass = ordered.filter((task) => !['architecture', 'lunch'].includes(task.id));
   const homeworkDuration = homework ? homework.duration + (scenario === 'delay' ? 20 : 0) : 0;
   const route = [];
-  let cursor = 125;
+  let cursor = dayStart;
   let place = locations.current;
 
   if (homework) {
     route.push({ id: homework.id, kind: 'task', title: homework.title, start: cursor, end: cursor + homeworkDuration, location: homework.location, travel: 0, priority: homework.priority });
     cursor += homeworkDuration;
     place = homework.location;
+  }
+
+  if (!classCommitment) {
+    afterClass.forEach((task) => {
+      const travel = travelService.getTravelTime(place, task.location);
+      cursor += travel;
+      route.push({ id: task.id, kind: 'task', title: task.title, start: cursor, end: cursor + task.duration, location: task.location, travel, priority: task.priority });
+      cursor += task.duration;
+      place = task.location;
+    });
+
+    return {
+      route,
+      stats: {
+        completed: tasks.filter((task) => task.complete).length,
+        travelTotal: route.reduce((sum, item) => sum + (item.travel || 0), 0),
+        buffer: 0,
+        missed: 0,
+      },
+    };
   }
 
   const addLunchBeforeClass = lunch && scenario !== 'delay' && cursor + travelService.getTravelTime(place, lunch.location) + lunch.duration + travelService.getTravelTime(lunch.location, classCommitment.location) <= classCommitment.startsAt;
@@ -81,8 +119,8 @@ function planDay(tasks, scenario) {
 
   const classTravel = travelService.getTravelTime(place, classCommitment.location);
   route.push({ id: 'walk-class', kind: 'travel', title: `Walk to ${classCommitment.location.split(' ')[0]}`, start: cursor, end: cursor + classTravel, location: classCommitment.location, travel: classTravel });
-  route.push({ ...classCommitment, kind: 'commitment', start: classCommitment.startsAt, end: classCommitment.startsAt + 75, travel: classTravel });
-  cursor = classCommitment.startsAt + 75;
+  route.push({ ...classCommitment, kind: 'commitment', start: classCommitment.startsAt, end: classCommitment.startsAt + classCommitment.duration, travel: classTravel });
+  cursor = classCommitment.startsAt + classCommitment.duration;
   place = classCommitment.location;
 
   if (lunch && !addLunchBeforeClass) {
@@ -116,10 +154,12 @@ function planDay(tasks, scenario) {
 
 export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
+  const [commitments, setCommitments] = useState(seedCommitments);
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
-  const plan = useMemo(() => planDay(tasks, scenario), [tasks, scenario]);
+  const [classDraft, setClassDraft] = useState({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
+  const plan = useMemo(() => planDay(tasks, commitments, scenario), [tasks, commitments, scenario]);
 
   const addTask = () => {
     if (!draft.title.trim()) return;
@@ -139,6 +179,22 @@ export default function App() {
   };
 
   const toggleTask = (id) => setTasks((items) => items.map((task) => task.id === id ? { ...task, complete: !task.complete } : task));
+
+  const addCommitment = () => {
+    if (!classDraft.title.trim()) return;
+    setCommitments((items) => [
+      ...items,
+      {
+        id: String(Date.now()),
+        title: classDraft.title.trim(),
+        startsAt: parseClockTime(classDraft.startsAt),
+        duration: Number(classDraft.duration) || 60,
+        location: classDraft.location.trim() || locations.ingram,
+        fixed: true,
+      },
+    ]);
+    setClassDraft({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -162,7 +218,7 @@ export default function App() {
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
             <Text style={styles.locationName}>{locations.current}</Text>
-            <Text style={styles.muted}>Current location · next class 3:30 PM at Ingram Hall</Text>
+            <Text style={styles.muted}>Current location · next fixed class is protected</Text>
           </View>
         </View>
 
@@ -202,6 +258,38 @@ export default function App() {
               </View>
               <View style={[styles.tag, styles[`tag${task.priority}`]]}><Text style={styles.tagText}>{task.priority}</Text></View>
             </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.kicker}>FIXED SCHEDULE</Text>
+            <Text style={styles.sectionTitle}>Classes and commitments</Text>
+          </View>
+        </View>
+
+        <View style={styles.form}>
+          <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class name" placeholderTextColor="#8b95a7" style={styles.input} />
+          <View style={styles.formRow}>
+            <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+            <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+          </View>
+          <View style={styles.priorityRow}>
+            <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={[styles.input, styles.locationInput]} />
+            <Pressable onPress={addCommitment} style={styles.addButton}><Text style={styles.addButtonText}>Save Class</Text></Pressable>
+          </View>
+        </View>
+
+        <View style={styles.taskList}>
+          {commitments.map((item) => (
+            <View key={item.id} style={styles.commitmentCard}>
+              <View style={styles.classIcon}><Text style={styles.classIconText}>C</Text></View>
+              <View style={styles.fill}>
+                <Text style={styles.taskTitle}>{item.title}</Text>
+                <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}</Text>
+              </View>
+              <Text style={styles.fixedBadge}>FIXED</Text>
+            </View>
           ))}
         </View>
 
@@ -304,8 +392,13 @@ const styles = StyleSheet.create({
   priorityTextActive: { color: '#fff' },
   addButton: { backgroundColor: '#0f7a3b', borderRadius: 7, paddingHorizontal: 13, height: 34, justifyContent: 'center' },
   addButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  locationInput: { flex: 1, minWidth: 170 },
   taskList: { marginTop: 12, gap: 8 },
   taskCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dfe6ef', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  commitmentCard: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#cfe0ff', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  classIcon: { width: 28, height: 28, borderRadius: 7, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
+  classIconText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
+  fixedBadge: { color: '#174ea6', fontSize: 10, fontWeight: '900' },
   completeTask: { opacity: 0.55 },
   checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: '#9aa8bb', alignItems: 'center', justifyContent: 'center' },
   checked: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
