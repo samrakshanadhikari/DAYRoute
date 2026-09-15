@@ -35,24 +35,11 @@ const seedTasks = [
 
 const seedWeeklySchedule = {
   Sunday: [],
-  Monday: [
-    { id: 'mon-data-structures', title: 'Data Structures / Work Block', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
-    { id: 'mon-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
-  ],
-  Tuesday: [
-    { id: 'tue-ai', title: 'AI Lecture', startsAt: 11 * 60, duration: 75, location: locations.library, fixed: true },
-    { id: 'tue-lab', title: 'Project Lab', startsAt: 15 * 60 + 30, duration: 60, location: locations.ingram, fixed: true },
-  ],
-  Wednesday: [
-    { id: 'wed-data-structures', title: 'Data Structures / Work Block', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
-    { id: 'wed-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
-  ],
-  Thursday: [
-    { id: 'thu-ai', title: 'AI Lecture', startsAt: 11 * 60, duration: 75, location: locations.library, fixed: true },
-  ],
-  Friday: [
-    { id: 'fri-seminar', title: 'Team Seminar', startsAt: 10 * 60, duration: 50, location: locations.library, fixed: true },
-  ],
+  Monday: [],
+  Tuesday: [],
+  Wednesday: [],
+  Thursday: [],
+  Friday: [],
   Saturday: [],
 };
 
@@ -408,8 +395,8 @@ export default function App() {
 
         <View style={styles.calendarImportCard}>
           <View style={styles.fill}>
-            <Text style={styles.calendarTitle}>Google Calendar import</Text>
-            <Text style={styles.muted}>Demo mode loads sample calendar events into your weekly fixed schedule.</Text>
+            <Text style={styles.calendarTitle}>Start from calendar</Text>
+            <Text style={styles.muted}>Import demo Google Calendar events, or manually add your fixed weekly commitments below.</Text>
             {!!calendarImportMessage && <Text style={styles.importMessage}>{calendarImportMessage}</Text>}
           </View>
           <Pressable onPress={importDemoCalendar} style={styles.importButton}>
@@ -430,8 +417,8 @@ export default function App() {
 
         {!scheduleSetupComplete && (
           <View style={styles.setupCard}>
-            <Text style={styles.emptyTitle}>First-time schedule setup</Text>
-            <Text style={styles.muted}>Use the weekday buttons to add your fixed events for the week. When you finish, DayRoute will automatically plan from today's schedule.</Text>
+            <Text style={styles.emptyTitle}>One-time weekly setup</Text>
+            <Text style={styles.muted}>Add the fixed events that normally repeat in your week. After this, DayRoute opens straight to today's plan and chooses the right weekday automatically.</Text>
             <Pressable onPress={finishScheduleSetup} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Use Today's Schedule</Text></Pressable>
           </View>
         )}
