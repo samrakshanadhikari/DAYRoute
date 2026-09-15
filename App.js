@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Location from 'expo-location';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const locations = {
   current: 'Alkek Library',
@@ -100,6 +101,12 @@ const travelService = {
     if (from === to) return 0;
     return travelTimes[`${from}->${to}`] ?? travelTimes[`${to}->${from}`] ?? 10;
   },
+};
+
+const getMapsUrl = (destination, coords) => {
+  const params = [`api=1`, `destination=${encodeURIComponent(destination)}`, `travelmode=walking`];
+  if (coords) params.push(`origin=${coords.latitude},${coords.longitude}`);
+  return `https://www.google.com/maps/dir/?${params.join('&')}`;
 };
 
 function planDay(tasks, commitments, scenario) {
@@ -318,6 +325,8 @@ export default function App() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
+  const [currentCoords, setCurrentCoords] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('Location not enabled yet');
   const [draft, setDraft] = useState({ title: '', day: todayName, duration: '', deadline: '', location: '', priority: 'Medium' });
   const [classDraft, setClassDraft] = useState({ title: '', startsAt: '', duration: '', location: '' });
   const activeDay = scheduleSetupComplete ? todayName : selectedDay;
@@ -326,6 +335,38 @@ export default function App() {
   const scheduleGaps = useMemo(() => findScheduleGaps(activeSchedule), [activeSchedule]);
   const recommendations = useMemo(() => recommendTasks(activeTasks, scheduleGaps), [activeTasks, scheduleGaps]);
   const plan = useMemo(() => planDay(activeTasks, activeSchedule, scenario), [activeTasks, activeSchedule, scenario]);
+
+  const requestCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationStatus('Location permission denied');
+        Alert.alert('Location needed', 'Allow location while using the app so DayRoute can suggest nearby tasks.');
+        return;
+      }
+
+      setLocationStatus('Finding your location...');
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setCurrentCoords(position.coords);
+      setLocationStatus(`Using phone location · ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+    } catch {
+      setLocationStatus('Could not get location');
+      Alert.alert('Location unavailable', 'Turn on location services and try again.');
+    }
+  };
+
+  const openDirections = async (destination) => {
+    if (!destination || destination === 'No location set') {
+      Alert.alert('Add a location first', 'This task needs a real destination before opening Google Maps.');
+      return;
+    }
+
+    try {
+      await Linking.openURL(getMapsUrl(destination, currentCoords));
+    } catch {
+      Alert.alert('Could not open maps', 'Try again after checking that your phone can open Google Maps links.');
+    }
+  };
 
   const addTask = () => {
     if (!draft.title.trim()) {
@@ -636,9 +677,13 @@ export default function App() {
         <View style={styles.locationCard}>
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
-            <Text style={styles.locationName}>{locations.current}</Text>
+            <Text style={styles.locationName}>{currentCoords ? 'Phone location active' : locations.current}</Text>
             <Text style={styles.muted}>{getDayLabel(activeDay, activeSchedule)} · {activeSchedule.length} fixed item{activeSchedule.length === 1 ? '' : 's'} · {scheduleGaps.length} open gap{scheduleGaps.length === 1 ? '' : 's'}</Text>
+            <Text style={styles.place}>{locationStatus}</Text>
           </View>
+          <Pressable onPress={requestCurrentLocation} style={styles.secondarySmall}>
+            <Text style={styles.secondarySmallText}>{currentCoords ? 'Refresh' : 'Use Location'}</Text>
+          </Pressable>
         </View>
 
         <View style={styles.calendarImportCard}>
@@ -823,6 +868,7 @@ export default function App() {
                         <Text style={styles.breakdownText}>{gap.suggestion.travelToNext}m next</Text>
                       </View>
                       <Text style={styles.fitText}>Needs {gap.suggestion.totalTime} min · leaves {gap.suggestion.buffer} min buffer</Text>
+                      <Pressable onPress={() => openDirections(gap.suggestion.task.location)} style={styles.suggestionAction}><Text style={styles.suggestionActionText}>Open Google Maps</Text></Pressable>
                     </View>
                   ) : (
                     <View style={styles.suggestionBox}>
