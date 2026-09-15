@@ -96,6 +96,7 @@ const applyClockPeriod = (value, period) => {
 
 const travelService = {
   getTravelTime(from, to) {
+    if (!from || !to || from === 'No location set' || to === 'No location set') return 0;
     if (from === to) return 0;
     return travelTimes[`${from}->${to}`] ?? travelTimes[`${to}->${from}`] ?? 10;
   },
@@ -155,7 +156,9 @@ function planDay(tasks, commitments, scenario) {
   }
 
   const classTravel = travelService.getTravelTime(place, classCommitment.location);
-  route.push({ id: 'walk-class', kind: 'travel', title: `Walk to ${classCommitment.location.split(' ')[0]}`, start: cursor, end: cursor + classTravel, location: classCommitment.location, travel: classTravel });
+  if (classTravel > 0) {
+    route.push({ id: 'walk-class', kind: 'travel', title: `Travel to ${classCommitment.title}`, start: cursor, end: cursor + classTravel, location: classCommitment.location, travel: classTravel });
+  }
   route.push({ ...classCommitment, kind: 'commitment', start: classCommitment.startsAt, end: classCommitment.startsAt + classCommitment.duration, travel: classTravel });
   cursor = classCommitment.startsAt + classCommitment.duration;
   place = classCommitment.location;
@@ -175,7 +178,7 @@ function planDay(tasks, commitments, scenario) {
   });
 
   const travelTotal = route.reduce((sum, item) => sum + (item.travel || 0), 0);
-  const classArrival = route.find((item) => item.id === 'walk-class')?.end ?? classCommitment.startsAt;
+  const classArrival = classTravel > 0 ? route.find((item) => item.id === 'walk-class')?.end ?? classCommitment.startsAt : cursor;
   const buffer = Math.max(0, classCommitment.startsAt - classArrival);
 
   return {
