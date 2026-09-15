@@ -103,7 +103,7 @@ Set Supabase function secrets:
 supabase secrets set GOOGLE_CLIENT_ID=your_google_client_id
 supabase secrets set GOOGLE_CLIENT_SECRET=your_google_client_secret
 supabase secrets set GOOGLE_REDIRECT_URI=https://xhirsjyzeatqbwyihplr.supabase.co/functions/v1/google-oauth-callback
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+supabase secrets set SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 Deploy functions:
