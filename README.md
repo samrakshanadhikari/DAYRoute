@@ -225,6 +225,37 @@ Skip:
 
 That gives you a strong, believable MVP.
 
+## Backend Plan
+
+The current hackathon MVP is local-first and demo-safe. The production version should use Supabase for:
+
+- user login/signup
+- saved fixed schedules
+- saved tasks and completion status
+- secure OAuth token storage
+- Google Calendar, Outlook Calendar, and Canvas imports
+- server-side AI planner calls
+
+Backend files:
+
+- [`BACKEND.md`](BACKEND.md): implementation plan and presentation wording
+- [`supabase/schema.sql`](supabase/schema.sql): database schema and row-level security policies
+- [`.env.example`](.env.example): required environment variables
+
+Production architecture:
+
+```text
+Expo App
+  -> Supabase Auth
+  -> Supabase Postgres
+  -> Supabase Edge Functions
+  -> Google Calendar / Outlook / Canvas / AI APIs
+```
+
+Presentation line:
+
+> "The MVP demonstrates the workflow locally. The production backend uses Supabase Auth, Postgres, and Edge Functions to securely sync schedules/tasks and handle OAuth integrations with Canvas, Google Calendar, and Outlook."
+
 ## Setup
 
 ```bash
