@@ -56,6 +56,27 @@ const seedWeeklySchedule = {
   Saturday: [],
 };
 
+const demoGoogleCalendarEvents = {
+  Monday: [
+    { id: 'gcal-mon-work-shift', title: 'Work Shift', startsAt: 16 * 60, duration: 120, location: locations.home, fixed: true, source: 'Google Calendar' },
+  ],
+  Tuesday: [
+    { id: 'gcal-tue-team-meeting', title: 'Team Meeting', startsAt: 13 * 60 + 30, duration: 45, location: locations.library, fixed: true, source: 'Google Calendar' },
+  ],
+  Wednesday: [
+    { id: 'gcal-wed-advising', title: 'Advising Appointment', startsAt: 15 * 60, duration: 30, location: locations.ingram, fixed: true, source: 'Google Calendar' },
+  ],
+  Thursday: [
+    { id: 'gcal-thu-doctor', title: 'Doctor Appointment', startsAt: 9 * 60 + 30, duration: 60, location: locations.home, fixed: true, source: 'Google Calendar' },
+  ],
+  Friday: [
+    { id: 'gcal-fri-project-review', title: 'Project Review', startsAt: 14 * 60, duration: 45, location: locations.library, fixed: true, source: 'Google Calendar' },
+  ],
+  Saturday: [
+    { id: 'gcal-sat-family', title: 'Family Commitment', startsAt: 12 * 60, duration: 90, location: locations.home, fixed: true, source: 'Google Calendar' },
+  ],
+};
+
 const pad = (value) => String(value).padStart(2, '0');
 const formatTime = (minutes) => {
   const hour24 = Math.floor(minutes / 60) % 24;
@@ -258,6 +279,7 @@ export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
   const [weeklySchedule, setWeeklySchedule] = useState(seedWeeklySchedule);
   const [selectedDay, setSelectedDay] = useState(todayName);
+  const [calendarImportMessage, setCalendarImportMessage] = useState('');
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
@@ -318,6 +340,30 @@ export default function App() {
     setClassDraft({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
   };
 
+  const importDemoCalendar = () => {
+    let importedCount = 0;
+
+    setWeeklySchedule((schedule) => {
+      const nextSchedule = { ...schedule };
+
+      Object.entries(demoGoogleCalendarEvents).forEach(([day, events]) => {
+        const existingEvents = nextSchedule[day] || [];
+        const existingIds = new Set(existingEvents.map((event) => event.id));
+        const newEvents = events.filter((event) => !existingIds.has(event.id));
+
+        importedCount += newEvents.length;
+        nextSchedule[day] = [...existingEvents, ...newEvents];
+      });
+
+      return nextSchedule;
+    });
+
+    const message = importedCount === 0 ? 'Google Calendar events already imported' : `Imported ${importedCount} fixed events`;
+    setCalendarImportMessage(message);
+    setPlanned(false);
+    Alert.alert('Google Calendar demo import', message);
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
@@ -342,6 +388,17 @@ export default function App() {
             <Text style={styles.locationName}>{locations.current}</Text>
             <Text style={styles.muted}>{getDayLabel(selectedDay, todaySchedule)} · {todaySchedule.length} fixed item{todaySchedule.length === 1 ? '' : 's'} · {scheduleGaps.length} open gap{scheduleGaps.length === 1 ? '' : 's'}</Text>
           </View>
+        </View>
+
+        <View style={styles.calendarImportCard}>
+          <View style={styles.fill}>
+            <Text style={styles.calendarTitle}>Google Calendar import</Text>
+            <Text style={styles.muted}>Demo mode loads sample calendar events into your weekly fixed schedule.</Text>
+            {!!calendarImportMessage && <Text style={styles.importMessage}>{calendarImportMessage}</Text>}
+          </View>
+          <Pressable onPress={importDemoCalendar} style={styles.importButton}>
+            <Text style={styles.importButtonText}>Import</Text>
+          </Pressable>
         </View>
 
         <View style={styles.daySelector}>
@@ -422,7 +479,7 @@ export default function App() {
               <View style={styles.classIcon}><Text style={styles.classIconText}>C</Text></View>
               <View style={styles.fill}>
                 <Text style={styles.taskTitle}>{item.title}</Text>
-                <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}</Text>
+                <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}{item.source ? ` · ${item.source}` : ''}</Text>
               </View>
               <Text style={styles.fixedBadge}>FIXED</Text>
             </View>
@@ -546,6 +603,11 @@ const styles = StyleSheet.create({
   title: { color: '#071936', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 8 },
   subtitle: { color: '#4a5a71', fontSize: 14, lineHeight: 20, marginTop: 8 },
   locationCard: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  calendarImportCard: { marginTop: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  calendarTitle: { color: '#10233f', fontSize: 15, fontWeight: '900' },
+  importMessage: { color: '#0f7a3b', fontSize: 12, lineHeight: 17, fontWeight: '900', marginTop: 4 },
+  importButton: { backgroundColor: '#1677ff', borderRadius: 7, height: 38, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  importButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   icon: { color: '#1f6feb', fontSize: 24 },
   daySelector: { flexDirection: 'row', gap: 6, marginTop: 12 },
   dayButton: { flex: 1, height: 34, borderRadius: 7, borderWidth: 1, borderColor: '#d4ddea', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
