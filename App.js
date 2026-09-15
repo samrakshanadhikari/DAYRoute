@@ -21,8 +21,8 @@ const travelTimes = {
   'Home->Alkek Library': 16,
 };
 
-const dayStart = 14 * 60 + 5;
-const dayEnd = 21 * 60;
+const dayStart = 8 * 60;
+const dayEnd = 22 * 60;
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const todayName = weekdays[new Date().getDay()];
 
@@ -409,6 +409,18 @@ export default function App() {
     Alert.alert('Google Calendar demo import', message);
   };
 
+  const startTaskFromGap = (gap) => {
+    setDraft({
+      title: '',
+      day: activeDay,
+      duration: '',
+      deadline: `Before ${formatTime(gap.end)}`,
+      location: gap.fromLocation || locations.current,
+      priority: 'Medium',
+    });
+    setShowTaskForm(true);
+  };
+
   const selectedDayIndex = weekdays.indexOf(selectedDay);
   const weeklyFixedCount = weekdays.reduce((sum, day) => sum + (weeklySchedule[day]?.length || 0), 0);
 
@@ -645,7 +657,7 @@ export default function App() {
               {activeTasks.length === 0 && (
                 <View style={styles.emptyDayCard}>
                   <Text style={styles.emptyTitle}>No tasks for today</Text>
-                  <Text style={styles.muted}>Tap Add Task to add mandatory or optional tasks before planning your day.</Text>
+                  <Text style={styles.muted}>Tap Add Task to add mandatory tasks, groceries, assignments, calls, or errands before planning your day.</Text>
                 </View>
               )}
               {activeTasks.map((task) => (
@@ -725,8 +737,9 @@ export default function App() {
                     </View>
                   ) : (
                     <View style={styles.suggestionBox}>
-                      <Text style={styles.suggestionTitle}>No task fits yet</Text>
-                      <Text style={styles.muted}>Add a shorter task or use a day with more open time.</Text>
+                      <Text style={styles.suggestionTitle}>You're free in this window</Text>
+                      <Text style={styles.muted}>Add a task for {activeDay}, then DayRoute will rank it against your priorities and travel time.</Text>
+                      <Pressable onPress={() => startTaskFromGap(gap)} style={styles.suggestionAction}><Text style={styles.suggestionActionText}>Add task for this gap</Text></Pressable>
                     </View>
                   )}
                 </View>
@@ -876,6 +889,8 @@ const styles = StyleSheet.create({
   gapBadge: { color: '#0f7a3b', backgroundColor: '#dcfce7', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: '900' },
   suggestionBox: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#e1e9f5', borderRadius: 8, padding: 11, gap: 5 },
   suggestionTitle: { color: '#071936', fontSize: 15, fontWeight: '900' },
+  suggestionAction: { marginTop: 5, alignSelf: 'flex-start', backgroundColor: '#1677ff', borderRadius: 7, paddingHorizontal: 12, paddingVertical: 9 },
+  suggestionActionText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   timeBreakdown: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginTop: 3 },
   breakdownText: { color: '#174ea6', backgroundColor: '#e8f1ff', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: '800' },
   fitText: { color: '#0f7a3b', fontSize: 12, fontWeight: '900', marginTop: 2 },
