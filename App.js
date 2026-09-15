@@ -323,6 +323,39 @@ export default function App() {
 
   const toggleTask = (id) => setTasks((items) => items.map((task) => task.id === id ? { ...task, complete: !task.complete } : task));
 
+  const removeTask = (id) => {
+    const task = tasks.find((item) => item.id === id);
+    Alert.alert('Remove task?', `Remove ${task?.title || 'this task'} from your plan?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          setTasks((items) => items.filter((item) => item.id !== id));
+          setPlanned(false);
+        },
+      },
+    ]);
+  };
+
+  const removeFixedEvent = (day, id) => {
+    const event = weeklySchedule[day]?.find((item) => item.id === id);
+    Alert.alert('Remove fixed event?', `Remove ${event?.title || 'this event'} from ${day}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          setWeeklySchedule((schedule) => ({
+            ...schedule,
+            [day]: (schedule[day] || []).filter((item) => item.id !== id),
+          }));
+          setPlanned(false);
+        },
+      },
+    ]);
+  };
+
   const selectDay = (day) => {
     setSelectedDay(day);
     setPlanned(false);
@@ -525,7 +558,12 @@ export default function App() {
                     <Text style={styles.taskTitle}>{item.title}</Text>
                     <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}{item.source ? ` · ${item.source}` : ''}</Text>
                   </View>
-                  <Text style={styles.fixedBadge}>FIXED</Text>
+                  <View style={styles.cardActions}>
+                    <Text style={styles.fixedBadge}>FIXED</Text>
+                    <Pressable onPress={() => removeFixedEvent(selectedDay, item.id)} style={styles.removeButton}>
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
@@ -664,15 +702,22 @@ export default function App() {
                 </View>
               )}
               {activeTasks.map((task) => (
-                <Pressable key={task.id} onPress={() => toggleTask(task.id)} style={[styles.taskCard, task.complete && styles.completeTask]}>
-                  <View style={[styles.checkbox, task.complete && styles.checked]}><Text style={styles.checkmark}>{task.complete ? '✓' : ''}</Text></View>
+                <View key={task.id} style={[styles.taskCard, task.complete && styles.completeTask]}>
+                  <Pressable onPress={() => toggleTask(task.id)} style={[styles.checkbox, task.complete && styles.checked]}>
+                    <Text style={styles.checkmark}>{task.complete ? '✓' : ''}</Text>
+                  </Pressable>
                   <View style={styles.fill}>
                     <Text style={styles.taskTitle}>{task.title}</Text>
                     <Text style={styles.muted}>{task.duration} min · {task.deadline}</Text>
                     <Text style={styles.place}>⌖ {task.location}</Text>
                   </View>
-                  <View style={[styles.tag, styles[`tag${task.priority}`]]}><Text style={styles.tagText}>{task.priority}</Text></View>
-                </Pressable>
+                  <View style={styles.cardActions}>
+                    <View style={[styles.tag, styles[`tag${task.priority}`]]}><Text style={styles.tagText}>{task.priority}</Text></View>
+                    <Pressable onPress={() => removeTask(task.id)} style={styles.removeButton}>
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                </View>
               ))}
             </View>
           </>
@@ -702,7 +747,12 @@ export default function App() {
                 <Text style={styles.taskTitle}>{item.title}</Text>
                 <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}{item.source ? ` · ${item.source}` : ''}</Text>
               </View>
-              <Text style={styles.fixedBadge}>FIXED</Text>
+              <View style={styles.cardActions}>
+                <Text style={styles.fixedBadge}>FIXED</Text>
+                <Pressable onPress={() => removeFixedEvent(activeDay, item.id)} style={styles.removeButton}>
+                  <Text style={styles.removeButtonText}>Remove</Text>
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>
@@ -900,6 +950,9 @@ const styles = StyleSheet.create({
   classIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
   classIconText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
   fixedBadge: { color: '#174ea6', fontSize: 10, fontWeight: '900' },
+  cardActions: { alignItems: 'flex-end', gap: 8 },
+  removeButton: { backgroundColor: '#fff1f2', borderColor: '#fecdd3', borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6 },
+  removeButtonText: { color: '#be123c', fontSize: 10, fontWeight: '900' },
   completeTask: { opacity: 0.55 },
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: '#9aa8bb', alignItems: 'center', justifyContent: 'center' },
   checked: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
