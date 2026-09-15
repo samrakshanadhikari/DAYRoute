@@ -26,12 +26,7 @@ const dayEnd = 21 * 60;
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const todayName = weekdays[new Date().getDay()];
 
-const seedTasks = [
-  { id: 'architecture', title: 'Finish project work', duration: 45, deadline: 'Today 3:00 PM', location: locations.library, priority: 'High', complete: false },
-  { id: 'lunch', title: 'Lunch', duration: 20, deadline: 'Flexible', location: locations.nearby, priority: 'Medium', complete: false },
-  { id: 'groceries', title: 'Groceries', duration: 40, deadline: 'Today 6:00 PM', location: locations.heb, priority: 'Low', complete: false },
-  { id: 'cv', title: 'Update resume', duration: 90, deadline: 'Tomorrow', location: locations.home, priority: 'Medium', complete: false },
-];
+const seedTasks = [];
 
 const seedWeeklySchedule = {
   Sunday: [],
@@ -93,6 +88,11 @@ const hasScheduleConflict = (events, candidate) => events.some((event) => {
   const candidateEnd = candidate.startsAt + candidate.duration;
   return candidate.startsAt < eventEnd && candidateEnd > event.startsAt;
 });
+
+const applyClockPeriod = (value, period) => {
+  const base = value.trim().replace(/\s*(am|pm)$/i, '');
+  return base ? `${base} ${period}` : '';
+};
 
 const travelService = {
   getTravelTime(from, to) {
@@ -276,31 +276,46 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState(todayName);
   const [scheduleSetupComplete, setScheduleSetupComplete] = useState(false);
   const [calendarImportMessage, setCalendarImportMessage] = useState('');
+  const [showTaskForm, setShowTaskForm] = useState(false);
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
-  const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
+  const [draft, setDraft] = useState({ title: '', day: todayName, duration: '', deadline: '', location: '', priority: 'Medium' });
   const [classDraft, setClassDraft] = useState({ title: '', startsAt: '', duration: '', location: '' });
   const activeDay = scheduleSetupComplete ? todayName : selectedDay;
   const activeSchedule = useMemo(() => [...(weeklySchedule[activeDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, activeDay]);
+  const activeTasks = useMemo(() => tasks.filter((task) => task.day === activeDay), [tasks, activeDay]);
   const scheduleGaps = useMemo(() => findScheduleGaps(activeSchedule), [activeSchedule]);
-  const recommendations = useMemo(() => recommendTasks(tasks, scheduleGaps), [tasks, scheduleGaps]);
-  const plan = useMemo(() => planDay(tasks, activeSchedule, scenario), [tasks, activeSchedule, scenario]);
+  const recommendations = useMemo(() => recommendTasks(activeTasks, scheduleGaps), [activeTasks, scheduleGaps]);
+  const plan = useMemo(() => planDay(activeTasks, activeSchedule, scenario), [activeTasks, activeSchedule, scenario]);
 
   const addTask = () => {
-    if (!draft.title.trim()) return;
+    if (!draft.title.trim()) {
+      Alert.alert('Add a task name', 'Enter the task you need to complete.');
+      return;
+    }
+
+    const duration = Number(draft.duration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      Alert.alert('Check the task duration', 'Enter how many minutes this task should take.');
+      return;
+    }
+
     setTasks((items) => [
       ...items,
       {
         id: String(Date.now()),
         title: draft.title.trim(),
-        duration: Number(draft.duration) || 30,
+        day: draft.day,
+        duration,
         deadline: draft.deadline.trim() || 'Flexible',
-        location: draft.location.trim() || locations.library,
+        location: draft.location.trim() || 'No location set',
         priority: draft.priority,
         complete: false,
       },
     ]);
-    setDraft({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
+    setDraft({ title: '', day: activeDay, duration: '', deadline: '', location: '', priority: 'Medium' });
+    setShowTaskForm(false);
+    setPlanned(false);
   };
 
   const toggleTask = (id) => setTasks((items) => items.map((task) => task.id === id ? { ...task, complete: !task.complete } : task));
@@ -314,6 +329,7 @@ export default function App() {
   const finishScheduleSetup = () => {
     setScheduleSetupComplete(true);
     setSelectedDay(todayName);
+    setDraft((current) => ({ ...current, day: todayName }));
     setPlanned(false);
     setScenario('normal');
   };
@@ -462,6 +478,13 @@ export default function App() {
                 <View style={styles.half}>
                   <Text style={styles.inputLabel}>Start time</Text>
                   <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="9:00 AM" placeholderTextColor="#8b95a7" style={styles.input} />
+                  <View style={styles.periodRow}>
+                    {['AM', 'PM'].map((period) => (
+                      <Pressable key={period} onPress={() => setClassDraft({ ...classDraft, startsAt: applyClockPeriod(classDraft.startsAt, period) })} style={[styles.periodButton, classDraft.startsAt.toUpperCase().endsWith(period) && styles.periodButtonActive]}>
+                        <Text style={[styles.periodText, classDraft.startsAt.toUpperCase().endsWith(period) && styles.periodTextActive]}>{period}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
                 <View style={styles.half}>
                   <Text style={styles.inputLabel}>Duration</Text>
@@ -566,28 +589,66 @@ export default function App() {
                 <Text style={styles.kicker}>TASK MANAGEMENT</Text>
                 <Text style={styles.sectionTitle}>Add or update tasks</Text>
               </View>
-              <Pressable onPress={() => setPlanned(true)} style={styles.primarySmall}><Text style={styles.primarySmallText}>Plan My Day</Text></Pressable>
+              <Pressable onPress={() => setShowTaskForm((value) => !value)} style={styles.primarySmall}><Text style={styles.primarySmallText}>{showTaskForm ? 'Close' : 'Add Task'}</Text></Pressable>
             </View>
 
-            <View style={styles.form}>
-              <TextInput value={draft.title} onChangeText={(title) => setDraft({ ...draft, title })} placeholder="Task name" placeholderTextColor="#8b95a7" style={styles.input} />
-              <View style={styles.formRow}>
-                <TextInput value={draft.duration} onChangeText={(duration) => setDraft({ ...draft, duration })} keyboardType="number-pad" placeholder="Duration" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-                <TextInput value={draft.deadline} onChangeText={(deadline) => setDraft({ ...draft, deadline })} placeholder="Deadline" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+            {showTaskForm && (
+              <View style={styles.form}>
+                <Text style={styles.formHint}>Add task for {draft.day}</Text>
+                <Text style={styles.inputLabel}>Task name</Text>
+                <TextInput value={draft.title} onChangeText={(title) => setDraft({ ...draft, title })} placeholder="Task name" placeholderTextColor="#8b95a7" style={styles.input} />
+
+                <Text style={styles.inputLabel}>Task day</Text>
+                <View style={styles.daySelector}>
+                  {weekdays.map((day) => (
+                    <Pressable key={day} onPress={() => setDraft({ ...draft, day })} style={[styles.dayButton, draft.day === day && styles.dayButtonActive]}>
+                      <Text style={[styles.dayButtonText, draft.day === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={styles.half}>
+                    <Text style={styles.inputLabel}>Duration</Text>
+                    <TextInput value={draft.duration} onChangeText={(duration) => setDraft({ ...draft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={styles.input} />
+                  </View>
+                  <View style={styles.half}>
+                    <Text style={styles.inputLabel}>Deadline</Text>
+                    <TextInput value={draft.deadline} onChangeText={(deadline) => setDraft({ ...draft, deadline })} placeholder="Today 6:00 PM" placeholderTextColor="#8b95a7" style={styles.input} />
+                  </View>
+                </View>
+
+                <Text style={styles.inputLabel}>Location</Text>
+                <TextInput value={draft.location} onChangeText={(location) => setDraft({ ...draft, location })} placeholder="Where you will do it" placeholderTextColor="#8b95a7" style={styles.input} />
+
+                <Text style={styles.inputLabel}>Priority</Text>
+                <View style={styles.priorityRow}>
+                  {['High', 'Medium', 'Low'].map((priority) => (
+                    <Pressable key={priority} onPress={() => setDraft({ ...draft, priority })} style={[styles.priority, draft.priority === priority && styles.priorityActive]}>
+                      <Text style={[styles.priorityText, draft.priority === priority && styles.priorityTextActive]}>{priority}</Text>
+                    </Pressable>
+                  ))}
+                  <Pressable onPress={addTask} style={styles.addButton}><Text style={styles.addButtonText}>Save Task</Text></Pressable>
+                </View>
               </View>
-              <TextInput value={draft.location} onChangeText={(location) => setDraft({ ...draft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
-              <View style={styles.priorityRow}>
-                {['High', 'Medium', 'Low'].map((priority) => (
-                  <Pressable key={priority} onPress={() => setDraft({ ...draft, priority })} style={[styles.priority, draft.priority === priority && styles.priorityActive]}>
-                    <Text style={[styles.priorityText, draft.priority === priority && styles.priorityTextActive]}>{priority}</Text>
-                  </Pressable>
-                ))}
-                <Pressable onPress={addTask} style={styles.addButton}><Text style={styles.addButtonText}>Save Task</Text></Pressable>
+            )}
+
+            <View style={styles.sectionHeaderCompact}>
+              <View>
+                <Text style={styles.kicker}>TODAY'S TASKS</Text>
+                <Text style={styles.muted}>{activeTasks.length} task{activeTasks.length === 1 ? '' : 's'} for {activeDay}</Text>
               </View>
+              <Pressable onPress={() => setPlanned(true)} style={styles.secondarySmall}><Text style={styles.secondarySmallText}>Plan My Day</Text></Pressable>
             </View>
 
             <View style={styles.taskList}>
-              {tasks.map((task) => (
+              {activeTasks.length === 0 && (
+                <View style={styles.emptyDayCard}>
+                  <Text style={styles.emptyTitle}>No tasks for today</Text>
+                  <Text style={styles.muted}>Tap Add Task to add mandatory or optional tasks before planning your day.</Text>
+                </View>
+              )}
+              {activeTasks.map((task) => (
                 <Pressable key={task.id} onPress={() => toggleTask(task.id)} style={[styles.taskCard, task.complete && styles.completeTask]}>
                   <View style={[styles.checkbox, task.complete && styles.checked]}><Text style={styles.checkmark}>{task.complete ? '✓' : ''}</Text></View>
                   <View style={styles.fill}>
@@ -611,27 +672,6 @@ export default function App() {
             <Pressable onPress={editWeeklySchedule} style={styles.secondarySmall}><Text style={styles.secondarySmallText}>Edit Week</Text></Pressable>
           )}
         </View>
-
-        {!scheduleSetupComplete && (
-          <View style={styles.form}>
-            <Text style={styles.formHint}>Adding to {selectedDay}</Text>
-            <Text style={styles.inputLabel}>Event name</Text>
-            <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
-            <View style={styles.formRow}>
-              <View style={styles.half}>
-                <Text style={styles.inputLabel}>Start time</Text>
-                <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="9:00 AM" placeholderTextColor="#8b95a7" style={styles.input} />
-              </View>
-              <View style={styles.half}>
-                <Text style={styles.inputLabel}>Duration</Text>
-                <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={styles.input} />
-              </View>
-            </View>
-            <Text style={styles.inputLabel}>Location</Text>
-            <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
-            <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Fixed Event to {selectedDay}</Text></Pressable>
-          </View>
-        )}
 
         <View style={styles.taskList}>
           {activeSchedule.length === 0 && (
@@ -790,6 +830,7 @@ const styles = StyleSheet.create({
   muted: { color: '#66768d', fontSize: 12, lineHeight: 17 },
   mutedCenter: { color: '#66768d', fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 270 },
   sectionHeader: { marginTop: 24, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  sectionHeaderCompact: { marginTop: 16, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   kicker: { color: '#0f7a3b', fontSize: 10, letterSpacing: 1, fontWeight: '900', marginBottom: 5 },
   sectionTitle: { color: '#071936', fontSize: 19, fontWeight: '900' },
   primarySmall: { backgroundColor: '#1677ff', borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
@@ -810,6 +851,11 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 7, height: 42, paddingHorizontal: 11, color: '#10233f', fontSize: 13 },
   formRow: { flexDirection: 'row', gap: 9 },
   half: { flex: 1 },
+  periodRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  periodButton: { flex: 1, height: 28, borderRadius: 6, borderWidth: 1, borderColor: '#b8c6d9', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  periodButtonActive: { backgroundColor: '#10233f', borderColor: '#10233f' },
+  periodText: { color: '#42536a', fontSize: 11, fontWeight: '900' },
+  periodTextActive: { color: '#fff' },
   priorityRow: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
   priority: { borderColor: '#b8c6d9', borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, height: 34, justifyContent: 'center', backgroundColor: '#fff' },
   priorityActive: { backgroundColor: '#10233f', borderColor: '#10233f' },
