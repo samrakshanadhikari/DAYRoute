@@ -73,6 +73,49 @@ Encrypted tokens stored in oauth_connections
 Calendar events become fixed_events
 ```
 
+Google Calendar Edge Function skeletons are included:
+
+- `supabase/functions/google-oauth-start`
+- `supabase/functions/google-oauth-callback`
+- `supabase/functions/import-google-calendar`
+
+Required Google setup:
+
+1. Create a Google Cloud project.
+2. Enable the Google Calendar API.
+3. Configure OAuth consent screen.
+4. Create a Web OAuth client.
+5. Add this redirect URI:
+
+```text
+https://YOUR_SUPABASE_PROJECT_REF.supabase.co/functions/v1/google-oauth-callback
+```
+
+For this project ref, the redirect URI would be:
+
+```text
+https://xhirsjyzeatqbwyihplr.supabase.co/functions/v1/google-oauth-callback
+```
+
+Set Supabase function secrets:
+
+```bash
+supabase secrets set GOOGLE_CLIENT_ID=your_google_client_id
+supabase secrets set GOOGLE_CLIENT_SECRET=your_google_client_secret
+supabase secrets set GOOGLE_REDIRECT_URI=https://xhirsjyzeatqbwyihplr.supabase.co/functions/v1/google-oauth-callback
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
+
+Deploy functions:
+
+```bash
+supabase functions deploy google-oauth-start
+supabase functions deploy google-oauth-callback
+supabase functions deploy import-google-calendar
+```
+
+Security note: the current skeleton stores token fields in `oauth_connections` columns named `access_token_encrypted` and `refresh_token_encrypted`. Before production, encrypt these with Supabase Vault or another server-side key management system.
+
 ### Outlook Calendar
 
 Same pattern as Google, using Microsoft identity + Microsoft Graph Calendar API.

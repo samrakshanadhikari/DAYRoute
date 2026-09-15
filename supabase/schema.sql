@@ -105,6 +105,12 @@ create policy "Users can read own oauth connections"
 
 create index if not exists fixed_events_user_weekday_idx on public.fixed_events (user_id, weekday, starts_at_minutes);
 create index if not exists tasks_user_weekday_idx on public.tasks (user_id, weekday, complete, priority);
+create unique index if not exists fixed_events_external_unique_idx
+  on public.fixed_events (user_id, source, external_id)
+  where external_id is not null;
+create unique index if not exists tasks_external_unique_idx
+  on public.tasks (user_id, source, external_id)
+  where external_id is not null;
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.fixed_events to authenticated;
