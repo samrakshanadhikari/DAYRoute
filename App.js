@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { supabase } from './lib/supabase';
 
 const locations = {
   current: 'Alkek Library',
@@ -142,6 +143,54 @@ const getMapsUrl = (destination, coords) => {
   if (coords) params.push(`origin=${coords.latitude},${coords.longitude}`);
   return `https://www.google.com/maps/dir/?${params.join('&')}`;
 };
+
+const buildEmptyWeeklySchedule = () => weekdays.reduce((schedule, day) => ({ ...schedule, [day]: [] }), {});
+
+const taskToRow = (task, userId) => ({
+  user_id: userId,
+  weekday: task.day,
+  title: task.title,
+  duration_minutes: task.duration,
+  deadline: task.deadline,
+  location: task.location,
+  priority: task.priority,
+  complete: task.complete,
+  source: task.source || 'manual',
+  external_id: task.id,
+});
+
+const rowToTask = (row) => ({
+  id: row.external_id || row.id,
+  title: row.title,
+  day: row.weekday,
+  duration: row.duration_minutes,
+  deadline: row.deadline,
+  location: row.location,
+  priority: row.priority,
+  complete: row.complete,
+  source: row.source === 'manual' ? undefined : row.source,
+});
+
+const fixedEventToRow = (event, day, userId) => ({
+  user_id: userId,
+  weekday: day,
+  title: event.title,
+  starts_at_minutes: event.startsAt,
+  duration_minutes: event.duration,
+  location: event.location,
+  source: event.source || 'manual',
+  external_id: event.id,
+});
+
+const rowToFixedEvent = (row) => ({
+  id: row.external_id || row.id,
+  title: row.title,
+  startsAt: row.starts_at_minutes,
+  duration: row.duration_minutes,
+  location: row.location,
+  fixed: true,
+  source: row.source === 'manual' ? undefined : row.source,
+});
 
 function planDay(tasks, commitments, scenario) {
   const priorityScore = { High: 0, Medium: 1, Low: 2 };
@@ -353,6 +402,11 @@ const recommendTasks = (tasks, gaps) => {
 export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
   const [weeklySchedule, setWeeklySchedule] = useState(seedWeeklySchedule);
+  const [session, setSession] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('Cloud sync ready');
   const [selectedDay, setSelectedDay] = useState(todayName);
   const [scheduleSetupComplete, setScheduleSetupComplete] = useState(false);
   const [calendarImportMessage, setCalendarImportMessage] = useState('');
@@ -370,6 +424,147 @@ export default function App() {
   const scheduleGaps = useMemo(() => findScheduleGaps(activeSchedule), [activeSchedule]);
   const recommendations = useMemo(() => recommendTasks(activeTasks, scheduleGaps), [activeTasks, scheduleGaps]);
   const plan = useMemo(() => planDay(activeTasks, activeSchedule, scenario), [activeTasks, activeSchedule, scenario]);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const signIn = async () => {
+    if (!supabase) {
+      Alert.alert('Supabase not configured', 'Add your Supabase URL and anon key first.');
+      return;
+    }
+    if (!authEmail.trim() || !authPassword.trim()) {
+      Alert.alert('Add login details', 'Enter an email and password.');
+      return;
+    }
+
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail.trim(),
+      password: authPassword,
+    });
+    setAuthLoading(false);
+
+    if (error) Alert.alert('Login failed', error.message);
+  };
+
+  const signUp = async () => {
+    if (!supabase) {
+      Alert.alert('Supabase not configured', 'Add your Supabase URL and anon key first.');
+      return;
+    }
+    if (!authEmail.trim() || authPassword.length < 6) {
+      Alert.alert('Check signup details', 'Enter an email and a password with at least 6 characters.');
+      return;
+    }
+
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signUp({
+      email: authEmail.trim(),
+      password: authPassword,
+    });
+    setAuthLoading(false);
+
+    if (error) {
+      Alert.alert('Signup failed', error.message);
+    } else {
+      Alert.alert('Account created', 'You can now save your DayRoute data to Supabase.');
+    }
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSyncStatus('Signed out');
+  };
+
+  const saveToCloud = async () => {
+    if (!supabase || !session?.user) {
+      Alert.alert('Login required', 'Sign in before saving to cloud.');
+      return;
+    }
+
+    setSyncStatus('Saving to Supabase...');
+    const userId = session.user.id;
+    const fixedRows = Object.entries(weeklySchedule).flatMap(([day, events]) => events.map((event) => fixedEventToRow(event, day, userId)));
+    const taskRows = tasks.map((task) => taskToRow(task, userId));
+
+    const fixedDelete = await supabase.from('fixed_events').delete().eq('user_id', userId);
+    if (fixedDelete.error) {
+      setSyncStatus('Cloud save failed');
+      Alert.alert('Cloud save failed', fixedDelete.error.message);
+      return;
+    }
+
+    const taskDelete = await supabase.from('tasks').delete().eq('user_id', userId);
+    if (taskDelete.error) {
+      setSyncStatus('Cloud save failed');
+      Alert.alert('Cloud save failed', taskDelete.error.message);
+      return;
+    }
+
+    if (fixedRows.length) {
+      const { error } = await supabase.from('fixed_events').insert(fixedRows);
+      if (error) {
+        setSyncStatus('Cloud save failed');
+        Alert.alert('Cloud save failed', error.message);
+        return;
+      }
+    }
+
+    if (taskRows.length) {
+      const { error } = await supabase.from('tasks').insert(taskRows);
+      if (error) {
+        setSyncStatus('Cloud save failed');
+        Alert.alert('Cloud save failed', error.message);
+        return;
+      }
+    }
+
+    setSyncStatus('Saved to Supabase');
+    Alert.alert('Saved', 'Your fixed schedule and tasks were saved to Supabase.');
+  };
+
+  const loadFromCloud = async () => {
+    if (!supabase || !session?.user) {
+      Alert.alert('Login required', 'Sign in before loading from cloud.');
+      return;
+    }
+
+    setSyncStatus('Loading from Supabase...');
+    const userId = session.user.id;
+    const fixedResult = await supabase.from('fixed_events').select('*').eq('user_id', userId);
+    const taskResult = await supabase.from('tasks').select('*').eq('user_id', userId);
+
+    if (fixedResult.error || taskResult.error) {
+      const message = fixedResult.error?.message || taskResult.error?.message;
+      setSyncStatus('Cloud load failed');
+      Alert.alert('Cloud load failed', message);
+      return;
+    }
+
+    const nextSchedule = buildEmptyWeeklySchedule();
+    fixedResult.data.forEach((row) => {
+      nextSchedule[row.weekday] = [...(nextSchedule[row.weekday] || []), rowToFixedEvent(row)];
+    });
+
+    setWeeklySchedule(nextSchedule);
+    setTasks(taskResult.data.map(rowToTask));
+    setPlanned(false);
+    setSyncStatus('Loaded from Supabase');
+    Alert.alert('Loaded', 'Your fixed schedule and tasks were loaded from Supabase.');
+  };
 
   const requestCurrentLocation = async () => {
     try {
@@ -731,6 +926,29 @@ export default function App() {
           <Text style={styles.subtitle}>{scheduleSetupComplete ? `DayRoute automatically loaded ${todayName}'s fixed schedule and found what fits today.` : 'Add your fixed weekly events once. After setup, DayRoute automatically uses the real weekday.'}</Text>
         </View>
 
+        <View style={styles.accountCard}>
+          <View style={styles.fill}>
+            <Text style={styles.calendarTitle}>{session?.user ? 'Supabase account connected' : 'Save your plan to cloud'}</Text>
+            <Text style={styles.muted}>{session?.user?.email || syncStatus}</Text>
+          </View>
+          {session?.user ? (
+            <View style={styles.cloudActions}>
+              <Pressable onPress={loadFromCloud} style={styles.secondarySmall}><Text style={styles.secondarySmallText}>Load</Text></Pressable>
+              <Pressable onPress={saveToCloud} style={styles.primarySmall}><Text style={styles.primarySmallText}>Save</Text></Pressable>
+              <Pressable onPress={signOut} style={styles.removeButton}><Text style={styles.removeButtonText}>Sign out</Text></Pressable>
+            </View>
+          ) : (
+            <View style={styles.authForm}>
+              <TextInput value={authEmail} onChangeText={setAuthEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email" placeholderTextColor="#8b95a7" style={styles.authInput} />
+              <TextInput value={authPassword} onChangeText={setAuthPassword} secureTextEntry placeholder="Password" placeholderTextColor="#8b95a7" style={styles.authInput} />
+              <View style={styles.authButtons}>
+                <Pressable disabled={authLoading} onPress={signIn} style={styles.secondarySmall}><Text style={styles.secondarySmallText}>{authLoading ? 'Wait' : 'Login'}</Text></Pressable>
+                <Pressable disabled={authLoading} onPress={signUp} style={styles.primarySmall}><Text style={styles.primarySmallText}>Sign Up</Text></Pressable>
+              </View>
+            </View>
+          )}
+        </View>
+
         <View style={styles.locationCard}>
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
@@ -1030,6 +1248,11 @@ const styles = StyleSheet.create({
   date: { color: '#118052', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   title: { color: '#07152f', fontSize: 36, lineHeight: 40, fontWeight: '900', marginTop: 8 },
   subtitle: { color: '#526176', fontSize: 14, lineHeight: 21, marginTop: 10, fontWeight: '600' },
+  accountCard: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#cfe0ff', borderRadius: 10, padding: 14, gap: 12, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
+  authForm: { flex: 1, minWidth: 230, gap: 8 },
+  authInput: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 9, height: 40, paddingHorizontal: 11, color: '#10233f', fontSize: 12 },
+  authButtons: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+  cloudActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
   locationCard: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d9e4ef', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#10233f', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   calendarImportCard: { marginTop: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d9e4ef', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#10233f', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   canvasImportCard: { marginTop: 12, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#9a3412', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
