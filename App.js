@@ -103,91 +103,127 @@ const travelService = {
 };
 
 function planDay(tasks, commitments, scenario) {
-  const openTasks = tasks.filter((task) => !task.complete);
-  const ordered = [...openTasks].sort((a, b) => {
-    const score = { High: 0, Medium: 1, Low: 2 };
-    return score[a.priority] - score[b.priority];
-  });
-
+  const priorityScore = { High: 0, Medium: 1, Low: 2 };
   const sortedCommitments = [...commitments].sort((a, b) => a.startsAt - b.startsAt);
-  const classCommitment = sortedCommitments[0];
-  const homework = ordered.find((task) => task.id === 'architecture');
-  const lunch = ordered.find((task) => task.id === 'lunch');
-  const afterClass = ordered.filter((task) => !['architecture', 'lunch'].includes(task.id));
-  const homeworkDuration = homework ? homework.duration + (scenario === 'delay' ? 20 : 0) : 0;
+  const openTasks = [...tasks]
+    .filter((task) => !task.complete)
+    .sort((a, b) => {
+      const priorityDifference = priorityScore[a.priority] - priorityScore[b.priority];
+      if (priorityDifference !== 0) return priorityDifference;
+      return getDeadlineScore(a.deadline) - getDeadlineScore(b.deadline);
+    });
+
+  const remainingTasks = [...openTasks];
   const route = [];
   let cursor = dayStart;
   let place = locations.current;
+  let delayApplied = false;
 
-  if (homework) {
-    route.push({ id: homework.id, kind: 'task', title: homework.title, start: cursor, end: cursor + homeworkDuration, location: homework.location, travel: 0, priority: homework.priority });
-    cursor += homeworkDuration;
-    place = homework.location;
-  }
+  const takeBestTaskForGap = (gapEnd, nextLocation) => {
+    const options = remainingTasks
+      .map((task, index) => {
+        const extraDelay = scenario === 'delay' && !delayApplied && task.priority === 'High' ? 20 : 0;
+        const duration = task.duration + extraDelay;
+        const travelToTask = travelService.getTravelTime(place, task.location);
+        const travelToNext = nextLocation ? travelService.getTravelTime(task.location, nextLocation) : 0;
+        const totalTime = travelToTask + duration + travelToNext;
 
-  if (!classCommitment) {
-    afterClass.forEach((task) => {
-      const travel = travelService.getTravelTime(place, task.location);
-      cursor += travel;
-      route.push({ id: task.id, kind: 'task', title: task.title, start: cursor, end: cursor + task.duration, location: task.location, travel, priority: task.priority });
-      cursor += task.duration;
-      place = task.location;
+        return {
+          index,
+          task,
+          duration,
+          travelToTask,
+          totalTime,
+          score: (priorityScore[task.priority] * 100) + (getDeadlineScore(task.deadline) * 20) + travelToTask + duration / 10,
+        };
+      })
+      .filter((option) => cursor + option.totalTime <= gapEnd)
+      .sort((a, b) => a.score - b.score);
+
+    const selected = options[0];
+    if (!selected) return false;
+
+    if (selected.travelToTask > 0) {
+      route.push({
+        id: `travel-${selected.task.id}-${cursor}`,
+        kind: 'travel',
+        title: `Travel to ${selected.task.title}`,
+        start: cursor,
+        end: cursor + selected.travelToTask,
+        location: selected.task.location,
+        travel: selected.travelToTask,
+      });
+      cursor += selected.travelToTask;
+    }
+
+    const moved = scenario === 'delay' && !delayApplied && selected.task.priority === 'High';
+    route.push({
+      id: selected.task.id,
+      kind: 'task',
+      title: selected.task.title,
+      start: cursor,
+      end: cursor + selected.duration,
+      location: selected.task.location,
+      travel: selected.travelToTask,
+      priority: selected.task.priority,
+      moved,
     });
 
-    return {
-      route,
-      stats: {
-        completed: tasks.filter((task) => task.complete).length,
-        travelTotal: route.reduce((sum, item) => sum + (item.travel || 0), 0),
-        buffer: 0,
-        missed: 0,
-      },
-    };
-  }
+    cursor += selected.duration;
+    place = selected.task.location;
+    delayApplied = delayApplied || moved;
+    remainingTasks.splice(selected.index, 1);
+    return true;
+  };
 
-  const addLunchBeforeClass = lunch && scenario !== 'delay' && cursor + travelService.getTravelTime(place, lunch.location) + lunch.duration + travelService.getTravelTime(lunch.location, classCommitment.location) <= classCommitment.startsAt;
+  const fillGap = (gapEnd, nextLocation) => {
+    while (cursor < gapEnd && takeBestTaskForGap(gapEnd, nextLocation)) {
+      // Keep filling this open window with tasks that realistically fit.
+    }
+    cursor = Math.max(cursor, gapEnd);
+  };
 
-  if (addLunchBeforeClass) {
-    const travel = travelService.getTravelTime(place, lunch.location);
-    cursor += travel;
-    route.push({ id: lunch.id, kind: 'task', title: lunch.title, start: cursor, end: cursor + lunch.duration, location: lunch.location, travel, priority: lunch.priority });
-    cursor += lunch.duration;
-    place = lunch.location;
-  }
+  sortedCommitments.forEach((commitment) => {
+    fillGap(commitment.startsAt, commitment.location);
 
-  const classTravel = travelService.getTravelTime(place, classCommitment.location);
-  if (classTravel > 0) {
-    route.push({ id: 'walk-class', kind: 'travel', title: `Travel to ${classCommitment.title}`, start: cursor, end: cursor + classTravel, location: classCommitment.location, travel: classTravel });
-  }
-  route.push({ ...classCommitment, kind: 'commitment', start: classCommitment.startsAt, end: classCommitment.startsAt + classCommitment.duration, travel: classTravel });
-  cursor = classCommitment.startsAt + classCommitment.duration;
-  place = classCommitment.location;
+    const travel = travelService.getTravelTime(place, commitment.location);
+    if (travel > 0 && cursor <= commitment.startsAt) {
+      route.push({
+        id: `travel-${commitment.id}`,
+        kind: 'travel',
+        title: `Travel to ${commitment.title}`,
+        start: Math.max(dayStart, commitment.startsAt - travel),
+        end: commitment.startsAt,
+        location: commitment.location,
+        travel,
+      });
+    }
 
-  if (lunch && !addLunchBeforeClass) {
-    const travel = travelService.getTravelTime(place, lunch.location);
-    cursor += travel;
-    route.push({ id: lunch.id, kind: 'task', title: lunch.title, start: cursor, end: cursor + lunch.duration, location: lunch.location, travel, priority: lunch.priority, moved: true });
-    cursor += lunch.duration;
-    place = lunch.location;
-  }
-
-  afterClass.slice(0, 1).forEach((task) => {
-    const travel = travelService.getTravelTime(place, task.location);
-    cursor += travel;
-    route.push({ id: task.id, kind: 'task', title: task.title, start: cursor, end: cursor + task.duration, location: task.location, travel, priority: task.priority });
+    route.push({
+      ...commitment,
+      kind: 'commitment',
+      start: commitment.startsAt,
+      end: commitment.startsAt + commitment.duration,
+      travel,
+    });
+    cursor = Math.max(cursor, commitment.startsAt + commitment.duration);
+    place = commitment.location;
   });
 
+  while (remainingTasks.length && cursor < dayEnd) {
+    if (!takeBestTaskForGap(dayEnd, null)) break;
+  }
+
   const travelTotal = route.reduce((sum, item) => sum + (item.travel || 0), 0);
-  const classArrival = classTravel > 0 ? route.find((item) => item.id === 'walk-class')?.end ?? classCommitment.startsAt : cursor;
-  const buffer = Math.max(0, classCommitment.startsAt - classArrival);
+  const plannedTaskCount = route.filter((item) => item.kind === 'task').length;
 
   return {
     route,
     stats: {
-      completed: tasks.filter((task) => task.complete).length,
+      completed: tasks.filter((task) => task.complete).length + plannedTaskCount,
       travelTotal,
-      buffer,
-      missed: buffer >= 0 ? 0 : 1,
+      buffer: Math.max(0, dayEnd - cursor),
+      missed: 0,
     },
   };
 }
@@ -430,7 +466,7 @@ export default function App() {
       Object.entries(demoGoogleCalendarEvents).forEach(([day, events]) => {
         const existingEvents = nextSchedule[day] || [];
         const existingIds = new Set(existingEvents.map((event) => event.id));
-        const newEvents = events.filter((event) => !existingIds.has(event.id));
+        const newEvents = events.filter((event) => !existingIds.has(event.id) && !hasScheduleConflict(existingEvents, event));
 
         importedCount += newEvents.length;
         nextSchedule[day] = [...existingEvents, ...newEvents];
@@ -821,7 +857,7 @@ export default function App() {
                       <Text style={styles.alertIcon}>!</Text>
                       <View style={styles.fill}>
                         <Text style={styles.alertTitle}>Something changed</Text>
-                        <Text style={styles.alertText}>Your priority task took longer, so lunch moved after the next fixed event.</Text>
+                        <Text style={styles.alertText}>A high-priority task took longer, so DayRoute rebuilt the rest of the timeline around fixed events.</Text>
                       </View>
                     </View>
                   )}
