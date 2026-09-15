@@ -211,7 +211,9 @@ function planDay(tasks, commitments, scenario) {
 
   const takeBestTaskForGap = (gapEnd, nextLocation) => {
     const options = remainingTasks
-      .map((task, index) => {
+      .map((task, index) => ({ task, index }))
+      .filter(({ task }) => taskMatchesGapWindow(task, cursor, gapEnd))
+      .map(({ task, index }) => {
         const extraDelay = scenario === 'delay' && !delayApplied && task.priority === 'High' ? 20 : 0;
         const duration = task.duration + extraDelay;
         const travelToTask = travelService.getTravelTime(place, task.location);
@@ -328,6 +330,11 @@ const getDeadlineScore = (deadline) => {
   return 2;
 };
 
+const taskMatchesGapWindow = (task, gapStart, gapEnd) => {
+  if (typeof task.preferredStart !== 'number' || typeof task.preferredEnd !== 'number') return true;
+  return gapStart >= task.preferredStart && gapEnd <= task.preferredEnd;
+};
+
 const findScheduleGaps = (commitments) => {
   const sorted = [...commitments].sort((a, b) => a.startsAt - b.startsAt);
   const gaps = [];
@@ -365,10 +372,13 @@ const findScheduleGaps = (commitments) => {
 
 const recommendTasks = (tasks, gaps) => {
   const priorityScore = { High: 0, Medium: 1, Low: 2 };
-  const openTasks = tasks.filter((task) => !task.complete);
+  const availableTasks = tasks.filter((task) => !task.complete);
+  const suggestedTaskIds = new Set();
 
   return gaps.map((gap) => {
-    const options = openTasks
+    const options = availableTasks
+      .filter((task) => !suggestedTaskIds.has(task.id))
+      .filter((task) => taskMatchesGapWindow(task, gap.start, gap.end))
       .map((task) => {
         const travelToTask = travelService.getTravelTime(gap.fromLocation, task.location);
         const travelToNext = gap.nextLocation ? travelService.getTravelTime(task.location, gap.nextLocation) : 0;
@@ -391,10 +401,13 @@ const recommendTasks = (tasks, gaps) => {
       .filter((option) => option.fits)
       .sort((a, b) => a.score - b.score);
 
+    const suggestion = options[0] || null;
+    if (suggestion) suggestedTaskIds.add(suggestion.task.id);
+
     return {
       ...gap,
       gapMinutes: gap.end - gap.start,
-      suggestion: options[0] || null,
+      suggestion,
     };
   });
 };
@@ -665,6 +678,8 @@ export default function App() {
         location: draft.location.trim() || 'No location set',
         priority: draft.priority,
         complete: false,
+        preferredStart: draft.preferredStart,
+        preferredEnd: draft.preferredEnd,
       },
     ]);
     setDraft({ title: '', day: activeDay, duration: '', deadline: '', location: '', priority: 'Medium' });
@@ -826,6 +841,8 @@ export default function App() {
       deadline: `Before ${formatTime(gap.end)}`,
       location: gap.fromLocation || locations.current,
       priority: 'Medium',
+      preferredStart: gap.start,
+      preferredEnd: gap.end,
     });
     setShowTaskForm(true);
   };
