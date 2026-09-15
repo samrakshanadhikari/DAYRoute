@@ -1,5 +1,5 @@
 import { handleCors, jsonResponse } from '../_shared/cors.ts';
-import { getUserFromRequest } from '../_shared/auth.ts';
+import { createSupabaseAdmin, getUserFromRequest } from '../_shared/auth.ts';
 
 const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
 const scopes = [
@@ -30,6 +30,18 @@ Deno.serve(async (req) => {
   }
 
   const state = crypto.randomUUID();
+  const supabase = createSupabaseAdmin();
+  const { error: stateError } = await supabase.from('oauth_states').insert({
+    state,
+    user_id: user.id,
+    provider: 'google_calendar',
+    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  });
+
+  if (stateError) {
+    return jsonResponse({ error: stateError.message }, 500);
+  }
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -37,7 +49,7 @@ Deno.serve(async (req) => {
     access_type: 'offline',
     prompt: 'consent',
     scope: scopes.join(' '),
-    state: `${user.id}:${state}`,
+    state,
   });
 
   return jsonResponse({

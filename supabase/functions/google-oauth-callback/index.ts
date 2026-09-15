@@ -16,7 +16,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Missing Google OAuth code or state' }, 400);
   }
 
-  const [userId] = state.split(':');
   const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
   const redirectUri = Deno.env.get('GOOGLE_REDIRECT_URI');
@@ -24,6 +23,20 @@ Deno.serve(async (req) => {
   if (!clientId || !clientSecret || !redirectUri) {
     return jsonResponse({ error: 'Google OAuth is not configured' }, 500);
   }
+
+  const supabase = createSupabaseAdmin();
+  const { data: oauthState, error: stateError } = await supabase
+    .from('oauth_states')
+    .select('*')
+    .eq('state', state)
+    .eq('provider', 'google_calendar')
+    .single();
+
+  if (stateError || !oauthState || new Date(oauthState.expires_at).getTime() < Date.now()) {
+    return jsonResponse({ error: 'Invalid or expired OAuth state' }, 400);
+  }
+
+  await supabase.from('oauth_states').delete().eq('state', state);
 
   const tokenResponse = await fetch(tokenUrl, {
     method: 'POST',
@@ -47,13 +60,12 @@ Deno.serve(async (req) => {
   });
   const userInfo = userInfoResponse.ok ? await userInfoResponse.json() : {};
 
-  const supabase = createSupabaseAdmin();
   const expiresAt = tokenData.expires_in
     ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
     : null;
 
   const { error } = await supabase.from('oauth_connections').upsert({
-    user_id: userId,
+    user_id: oauthState.user_id,
     provider: 'google_calendar',
     provider_user_id: userInfo.id || userInfo.email || null,
     access_token_encrypted: tokenData.access_token,

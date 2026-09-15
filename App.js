@@ -566,6 +566,50 @@ export default function App() {
     Alert.alert('Loaded', 'Your fixed schedule and tasks were loaded from Supabase.');
   };
 
+  const connectGoogleCalendar = async () => {
+    if (!supabase || !session?.user) {
+      Alert.alert('Login required', 'Sign in to DayRoute before connecting Google Calendar.');
+      return;
+    }
+
+    setCalendarImportMessage('Opening Google Calendar connection...');
+    const { data, error } = await supabase.functions.invoke('google-oauth-start', {
+      body: {},
+    });
+
+    if (error || !data?.url) {
+      const message = error?.message || data?.error || 'Could not start Google Calendar connection.';
+      setCalendarImportMessage('Google Calendar connection failed');
+      Alert.alert('Google Calendar', message);
+      return;
+    }
+
+    await Linking.openURL(data.url);
+    setCalendarImportMessage('Finish Google login, then tap Import Real Calendar.');
+  };
+
+  const importRealGoogleCalendar = async () => {
+    if (!supabase || !session?.user) {
+      Alert.alert('Login required', 'Sign in to DayRoute before importing Google Calendar.');
+      return;
+    }
+
+    setCalendarImportMessage('Importing real Google Calendar events...');
+    const { data, error } = await supabase.functions.invoke('import-google-calendar', {
+      body: {},
+    });
+
+    if (error || data?.error) {
+      const message = data?.error || error?.message || 'Could not import Google Calendar events.';
+      setCalendarImportMessage('Google Calendar import failed');
+      Alert.alert('Google Calendar import failed', message);
+      return;
+    }
+
+    setCalendarImportMessage(data?.message || 'Imported Google Calendar events');
+    await loadFromCloud();
+  };
+
   const requestCurrentLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -964,12 +1008,24 @@ export default function App() {
         <View style={styles.calendarImportCard}>
           <View style={styles.fill}>
             <Text style={styles.calendarTitle}>Start from calendar</Text>
-            <Text style={styles.muted}>Import demo Google Calendar events, or manually add your fixed weekly commitments below.</Text>
+            <Text style={styles.muted}>Use demo events, or connect Google Calendar after signing in.</Text>
             {!!calendarImportMessage && <Text style={styles.importMessage}>{calendarImportMessage}</Text>}
           </View>
-          <Pressable onPress={importDemoCalendar} style={styles.importButton}>
-            <Text style={styles.importButtonText}>Import</Text>
-          </Pressable>
+          <View style={styles.calendarActions}>
+            <Pressable onPress={importDemoCalendar} style={styles.importButton}>
+              <Text style={styles.importButtonText}>Demo</Text>
+            </Pressable>
+            {scheduleSetupComplete && (
+              <>
+                <Pressable onPress={connectGoogleCalendar} style={styles.secondarySmall}>
+                  <Text style={styles.secondarySmallText}>Connect</Text>
+                </Pressable>
+                <Pressable onPress={importRealGoogleCalendar} style={styles.realImportButton}>
+                  <Text style={styles.importButtonText}>Import Real</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
         </View>
 
         {scheduleSetupComplete && (
@@ -1259,6 +1315,8 @@ const styles = StyleSheet.create({
   calendarTitle: { color: '#07152f', fontSize: 16, fontWeight: '900' },
   importMessage: { color: '#0f7a3b', fontSize: 12, lineHeight: 17, fontWeight: '900', marginTop: 4 },
   importButton: { backgroundColor: '#1677ff', borderRadius: 9, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  realImportButton: { backgroundColor: '#118052', borderRadius: 9, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  calendarActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
   canvasButton: { backgroundColor: '#f97316', borderRadius: 9, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   importButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   icon: { color: '#1677ff', fontSize: 24 },

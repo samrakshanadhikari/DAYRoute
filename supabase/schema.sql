@@ -52,10 +52,19 @@ create table if not exists public.oauth_connections (
   unique (user_id, provider)
 );
 
+create table if not exists public.oauth_states (
+  state text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('google_calendar', 'outlook_calendar', 'canvas')),
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 alter table public.profiles enable row level security;
 alter table public.fixed_events enable row level security;
 alter table public.tasks enable row level security;
 alter table public.oauth_connections enable row level security;
+alter table public.oauth_states enable row level security;
 
 create policy "Users can read own profile"
   on public.profiles for select
@@ -102,6 +111,7 @@ create policy "Users can read own oauth connections"
   using (auth.uid() = user_id);
 
 -- Inserts/updates for oauth_connections should happen from Edge Functions using the service role key.
+-- oauth_states should only be read/written by Edge Functions using the service role key.
 
 create index if not exists fixed_events_user_weekday_idx on public.fixed_events (user_id, weekday, starts_at_minutes);
 create index if not exists tasks_user_weekday_idx on public.tasks (user_id, weekday, complete, priority);
@@ -111,6 +121,7 @@ create unique index if not exists fixed_events_external_unique_idx
 create unique index if not exists tasks_external_unique_idx
   on public.tasks (user_id, source, external_id)
   where external_id is not null;
+create index if not exists oauth_states_expires_at_idx on public.oauth_states (expires_at);
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.fixed_events to authenticated;
