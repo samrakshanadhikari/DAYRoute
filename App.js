@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const locations = {
   current: 'Alkek Library',
@@ -205,22 +205,35 @@ export default function App() {
 
   const toggleTask = (id) => setTasks((items) => items.map((task) => task.id === id ? { ...task, complete: !task.complete } : task));
 
+  const selectDay = (day) => {
+    setSelectedDay(day);
+    setPlanned(false);
+    setScenario('normal');
+  };
+
   const addCommitment = () => {
-    if (!classDraft.title.trim()) return;
+    if (!classDraft.title.trim()) {
+      Alert.alert('Add a class name', `Enter a class or commitment name for ${selectedDay}.`);
+      return;
+    }
+
+    const newClass = {
+      id: `${selectedDay}-${Date.now()}`,
+      title: classDraft.title.trim(),
+      startsAt: parseClockTime(classDraft.startsAt),
+      duration: Number(classDraft.duration) || 60,
+      location: classDraft.location.trim() || locations.ingram,
+      fixed: true,
+    };
+
     setWeeklySchedule((schedule) => ({
       ...schedule,
       [selectedDay]: [
         ...(schedule[selectedDay] || []),
-        {
-        id: String(Date.now()),
-        title: classDraft.title.trim(),
-        startsAt: parseClockTime(classDraft.startsAt),
-        duration: Number(classDraft.duration) || 60,
-        location: classDraft.location.trim() || locations.ingram,
-        fixed: true,
-        },
+        newClass,
       ],
     }));
+    setPlanned(false);
     setClassDraft({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
   };
 
@@ -252,8 +265,9 @@ export default function App() {
 
         <View style={styles.daySelector}>
           {weekdays.map((day) => (
-            <Pressable key={day} onPress={() => setSelectedDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
+            <Pressable key={day} onPress={() => selectDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
               <Text style={[styles.dayButtonText, selectedDay === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
+              <Text style={[styles.dayCountText, selectedDay === day && styles.dayButtonTextActive]}>{weeklySchedule[day]?.length || 0}</Text>
             </Pressable>
           ))}
         </View>
@@ -305,15 +319,14 @@ export default function App() {
         </View>
 
         <View style={styles.form}>
+          <Text style={styles.formHint}>Adding to {selectedDay}</Text>
           <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class name" placeholderTextColor="#8b95a7" style={styles.input} />
           <View style={styles.formRow}>
             <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
             <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
           </View>
-          <View style={styles.priorityRow}>
-            <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={[styles.input, styles.locationInput]} />
-            <Pressable onPress={addCommitment} style={styles.addButton}><Text style={styles.addButtonText}>Save Class</Text></Pressable>
-          </View>
+          <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
+          <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Class to {selectedDay}</Text></Pressable>
         </View>
 
         <View style={styles.taskList}>
@@ -418,6 +431,7 @@ const styles = StyleSheet.create({
   dayButton: { flex: 1, height: 34, borderRadius: 7, borderWidth: 1, borderColor: '#d4ddea', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   dayButtonActive: { backgroundColor: '#10233f', borderColor: '#10233f' },
   dayButtonText: { color: '#516177', fontSize: 11, fontWeight: '900' },
+  dayCountText: { color: '#7a8798', fontSize: 9, fontWeight: '900', marginTop: 1 },
   dayButtonTextActive: { color: '#fff' },
   fill: { flex: 1 },
   locationName: { color: '#10233f', fontSize: 15, fontWeight: '800' },
@@ -429,6 +443,7 @@ const styles = StyleSheet.create({
   primarySmall: { backgroundColor: '#1677ff', borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
   primarySmallText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   form: { backgroundColor: '#eefaf1', borderWidth: 1, borderColor: '#b7e3c1', borderRadius: 8, padding: 12, gap: 9 },
+  formHint: { color: '#0f7a3b', fontSize: 12, fontWeight: '900' },
   input: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 7, height: 42, paddingHorizontal: 11, color: '#10233f', fontSize: 13 },
   formRow: { flexDirection: 'row', gap: 9 },
   half: { flex: 1 },
@@ -438,6 +453,7 @@ const styles = StyleSheet.create({
   priorityText: { color: '#42536a', fontSize: 12, fontWeight: '800' },
   priorityTextActive: { color: '#fff' },
   addButton: { backgroundColor: '#0f7a3b', borderRadius: 7, paddingHorizontal: 13, height: 34, justifyContent: 'center' },
+  saveClassButton: { backgroundColor: '#0f7a3b', borderRadius: 7, height: 42, alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   locationInput: { flex: 1, minWidth: 170 },
   taskList: { marginTop: 12, gap: 8 },
