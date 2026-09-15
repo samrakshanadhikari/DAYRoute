@@ -367,6 +367,108 @@ export default function App() {
     Alert.alert('Google Calendar demo import', message);
   };
 
+  const selectedDayIndex = weekdays.indexOf(selectedDay);
+  const weeklyFixedCount = weekdays.reduce((sum, day) => sum + (weeklySchedule[day]?.length || 0), 0);
+
+  const goToPreviousSetupDay = () => {
+    selectDay(weekdays[(selectedDayIndex + weekdays.length - 1) % weekdays.length]);
+  };
+
+  const goToNextSetupDay = () => {
+    selectDay(weekdays[(selectedDayIndex + 1) % weekdays.length]);
+  };
+
+  if (!scheduleSetupComplete) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.brand}>DayRoute</Text>
+              <Text style={styles.caption}>One-time setup</Text>
+            </View>
+            <View style={styles.storagePill}><Text style={styles.storageText}>{weeklyFixedCount} fixed</Text></View>
+          </View>
+
+          <View style={styles.hero}>
+            <Text style={styles.date}>SET UP YOUR WEEK</Text>
+            <Text style={styles.title}>Add your fixed schedule once.</Text>
+            <Text style={styles.subtitle}>Move through each day, add classes, shifts, meetings, or appointments, then DayRoute will automatically open today's plan using your phone's date.</Text>
+          </View>
+
+          <View style={styles.calendarImportCard}>
+            <View style={styles.fill}>
+              <Text style={styles.calendarTitle}>Start from calendar</Text>
+              <Text style={styles.muted}>Demo import adds sample Google Calendar events to your week.</Text>
+              {!!calendarImportMessage && <Text style={styles.importMessage}>{calendarImportMessage}</Text>}
+            </View>
+            <Pressable onPress={importDemoCalendar} style={styles.importButton}>
+              <Text style={styles.importButtonText}>Import</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.setupPanel}>
+            <View style={styles.setupPanelTop}>
+              <Pressable onPress={goToPreviousSetupDay} style={styles.dayNavButton}><Text style={styles.dayNavText}>Prev</Text></Pressable>
+              <View style={styles.setupDayCenter}>
+                <Text style={styles.kicker}>EDITING</Text>
+                <Text style={styles.setupDayTitle}>{selectedDay}</Text>
+                <Text style={styles.muted}>{weeklySchedule[selectedDay]?.length || 0} fixed event{(weeklySchedule[selectedDay]?.length || 0) === 1 ? '' : 's'}</Text>
+              </View>
+              <Pressable onPress={goToNextSetupDay} style={styles.dayNavButton}><Text style={styles.dayNavText}>Next</Text></Pressable>
+            </View>
+
+            <View style={styles.daySelector}>
+              {weekdays.map((day) => (
+                <Pressable key={day} onPress={() => selectDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
+                  <Text style={[styles.dayButtonText, selectedDay === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
+                  <Text style={[styles.dayCountText, selectedDay === day && styles.dayButtonTextActive]}>{weeklySchedule[day]?.length || 0}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.form}>
+              <Text style={styles.formHint}>Add fixed event to {selectedDay}</Text>
+              <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
+              <View style={styles.formRow}>
+                <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+                <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+              </View>
+              <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
+              <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save to {selectedDay}</Text></Pressable>
+            </View>
+
+            <View style={styles.taskList}>
+              {(weeklySchedule[selectedDay] || []).length === 0 && (
+                <View style={styles.emptyDayCard}>
+                  <Text style={styles.emptyTitle}>{selectedDay} is open</Text>
+                  <Text style={styles.muted}>Add a fixed event only if this day has something that cannot move.</Text>
+                </View>
+              )}
+              {[...(weeklySchedule[selectedDay] || [])].sort((a, b) => a.startsAt - b.startsAt).map((item) => (
+                <View key={item.id} style={styles.commitmentCard}>
+                  <View style={styles.classIcon}><Text style={styles.classIconText}>F</Text></View>
+                  <View style={styles.fill}>
+                    <Text style={styles.taskTitle}>{item.title}</Text>
+                    <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}{item.source ? ` · ${item.source}` : ''}</Text>
+                  </View>
+                  <Text style={styles.fixedBadge}>FIXED</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.finishSetupCard}>
+            <Text style={styles.emptyTitle}>Ready for today's plan?</Text>
+            <Text style={styles.muted}>DayRoute will use your phone's date, load {todayName}'s fixed events, find gaps, and recommend tasks that fit.</Text>
+            <Pressable onPress={finishScheduleSetup} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Finish Setup</Text></Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
@@ -653,6 +755,13 @@ const styles = StyleSheet.create({
   secondarySmall: { backgroundColor: '#eef4ff', borderColor: '#cfe0ff', borderWidth: 1, borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
   secondarySmallText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
   setupCard: { marginTop: 12, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 14, gap: 10 },
+  setupPanel: { marginTop: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 13, gap: 12 },
+  setupPanelTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  setupDayCenter: { flex: 1, alignItems: 'center' },
+  setupDayTitle: { color: '#071936', fontSize: 24, fontWeight: '900' },
+  dayNavButton: { backgroundColor: '#eef4ff', borderColor: '#cfe0ff', borderWidth: 1, borderRadius: 8, height: 38, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  dayNavText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
+  finishSetupCard: { marginTop: 14, backgroundColor: '#fff8f1', borderColor: '#fdba74', borderWidth: 1, borderRadius: 8, padding: 14, gap: 10 },
   form: { backgroundColor: '#eefaf1', borderWidth: 1, borderColor: '#b7e3c1', borderRadius: 8, padding: 12, gap: 9 },
   formHint: { color: '#0f7a3b', fontSize: 12, fontWeight: '900' },
   input: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 7, height: 42, paddingHorizontal: 11, color: '#10233f', fontSize: 13 },
