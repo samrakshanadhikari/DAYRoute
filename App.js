@@ -279,15 +279,17 @@ export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
   const [weeklySchedule, setWeeklySchedule] = useState(seedWeeklySchedule);
   const [selectedDay, setSelectedDay] = useState(todayName);
+  const [scheduleSetupComplete, setScheduleSetupComplete] = useState(false);
   const [calendarImportMessage, setCalendarImportMessage] = useState('');
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
   const [classDraft, setClassDraft] = useState({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
-  const todaySchedule = useMemo(() => [...(weeklySchedule[selectedDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, selectedDay]);
-  const scheduleGaps = useMemo(() => findScheduleGaps(todaySchedule), [todaySchedule]);
+  const activeDay = scheduleSetupComplete ? todayName : selectedDay;
+  const activeSchedule = useMemo(() => [...(weeklySchedule[activeDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, activeDay]);
+  const scheduleGaps = useMemo(() => findScheduleGaps(activeSchedule), [activeSchedule]);
   const recommendations = useMemo(() => recommendTasks(tasks, scheduleGaps), [tasks, scheduleGaps]);
-  const plan = useMemo(() => planDay(tasks, todaySchedule, scenario), [tasks, todaySchedule, scenario]);
+  const plan = useMemo(() => planDay(tasks, activeSchedule, scenario), [tasks, activeSchedule, scenario]);
 
   const addTask = () => {
     if (!draft.title.trim()) return;
@@ -310,6 +312,20 @@ export default function App() {
 
   const selectDay = (day) => {
     setSelectedDay(day);
+    setPlanned(false);
+    setScenario('normal');
+  };
+
+  const finishScheduleSetup = () => {
+    setScheduleSetupComplete(true);
+    setSelectedDay(todayName);
+    setPlanned(false);
+    setScenario('normal');
+  };
+
+  const editWeeklySchedule = () => {
+    setScheduleSetupComplete(false);
+    setSelectedDay(todayName);
     setPlanned(false);
     setScenario('normal');
   };
@@ -373,20 +389,20 @@ export default function App() {
             <Text style={styles.brand}>DayRoute</Text>
             <Text style={styles.caption}>Productivity x navigation</Text>
           </View>
-          <View style={styles.storagePill}><Text style={styles.storageText}>Local MVP</Text></View>
+          <View style={styles.storagePill}><Text style={styles.storageText}>{scheduleSetupComplete ? 'Today Plan' : 'Setup'}</Text></View>
         </View>
 
         <View style={styles.hero}>
           <Text style={styles.date}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
-          <Text style={styles.title}>{selectedDay === todayName ? 'Plan today.' : `Preview ${selectedDay}.`}</Text>
-          <Text style={styles.subtitle}>DayRoute loads your fixed schedule, finds open time, and suggests realistic tasks by priority, location, and time needed.</Text>
+          <Text style={styles.title}>{scheduleSetupComplete ? 'Your plan for today.' : 'Set your weekly rhythm.'}</Text>
+          <Text style={styles.subtitle}>{scheduleSetupComplete ? `DayRoute automatically loaded ${todayName}'s fixed schedule and found what fits today.` : 'Add your fixed weekly events once. After setup, DayRoute automatically uses the real weekday.'}</Text>
         </View>
 
         <View style={styles.locationCard}>
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
             <Text style={styles.locationName}>{locations.current}</Text>
-            <Text style={styles.muted}>{getDayLabel(selectedDay, todaySchedule)} · {todaySchedule.length} fixed item{todaySchedule.length === 1 ? '' : 's'} · {scheduleGaps.length} open gap{scheduleGaps.length === 1 ? '' : 's'}</Text>
+            <Text style={styles.muted}>{getDayLabel(activeDay, activeSchedule)} · {activeSchedule.length} fixed item{activeSchedule.length === 1 ? '' : 's'} · {scheduleGaps.length} open gap{scheduleGaps.length === 1 ? '' : 's'}</Text>
           </View>
         </View>
 
@@ -401,80 +417,99 @@ export default function App() {
           </Pressable>
         </View>
 
-        <View style={styles.daySelector}>
-          {weekdays.map((day) => (
-            <Pressable key={day} onPress={() => selectDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
-              <Text style={[styles.dayButtonText, selectedDay === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
-              <Text style={[styles.dayCountText, selectedDay === day && styles.dayButtonTextActive]}>{weeklySchedule[day]?.length || 0}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.kicker}>TASK MANAGEMENT</Text>
-            <Text style={styles.sectionTitle}>Add or update tasks</Text>
-          </View>
-          <Pressable onPress={() => setPlanned(true)} style={styles.primarySmall}><Text style={styles.primarySmallText}>Plan My Day</Text></Pressable>
-        </View>
-
-        <View style={styles.form}>
-          <TextInput value={draft.title} onChangeText={(title) => setDraft({ ...draft, title })} placeholder="Task name" placeholderTextColor="#8b95a7" style={styles.input} />
-          <View style={styles.formRow}>
-            <TextInput value={draft.duration} onChangeText={(duration) => setDraft({ ...draft, duration })} keyboardType="number-pad" placeholder="Duration" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-            <TextInput value={draft.deadline} onChangeText={(deadline) => setDraft({ ...draft, deadline })} placeholder="Deadline" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-          </View>
-          <TextInput value={draft.location} onChangeText={(location) => setDraft({ ...draft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
-          <View style={styles.priorityRow}>
-            {['High', 'Medium', 'Low'].map((priority) => (
-              <Pressable key={priority} onPress={() => setDraft({ ...draft, priority })} style={[styles.priority, draft.priority === priority && styles.priorityActive]}>
-                <Text style={[styles.priorityText, draft.priority === priority && styles.priorityTextActive]}>{priority}</Text>
+        {!scheduleSetupComplete && (
+          <View style={styles.daySelector}>
+            {weekdays.map((day) => (
+              <Pressable key={day} onPress={() => selectDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
+                <Text style={[styles.dayButtonText, selectedDay === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
+                <Text style={[styles.dayCountText, selectedDay === day && styles.dayButtonTextActive]}>{weeklySchedule[day]?.length || 0}</Text>
               </Pressable>
             ))}
-            <Pressable onPress={addTask} style={styles.addButton}><Text style={styles.addButtonText}>Save Task</Text></Pressable>
           </View>
-        </View>
+        )}
 
-        <View style={styles.taskList}>
-          {tasks.map((task) => (
-            <Pressable key={task.id} onPress={() => toggleTask(task.id)} style={[styles.taskCard, task.complete && styles.completeTask]}>
-              <View style={[styles.checkbox, task.complete && styles.checked]}><Text style={styles.checkmark}>{task.complete ? '✓' : ''}</Text></View>
-              <View style={styles.fill}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
-                <Text style={styles.muted}>{task.duration} min · {task.deadline}</Text>
-                <Text style={styles.place}>⌖ {task.location}</Text>
+        {!scheduleSetupComplete && (
+          <View style={styles.setupCard}>
+            <Text style={styles.emptyTitle}>First-time schedule setup</Text>
+            <Text style={styles.muted}>Use the weekday buttons to add your fixed events for the week. When you finish, DayRoute will automatically plan from today's schedule.</Text>
+            <Pressable onPress={finishScheduleSetup} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Use Today's Schedule</Text></Pressable>
+          </View>
+        )}
+
+        {scheduleSetupComplete && (
+          <>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.kicker}>TASK MANAGEMENT</Text>
+                <Text style={styles.sectionTitle}>Add or update tasks</Text>
               </View>
-              <View style={[styles.tag, styles[`tag${task.priority}`]]}><Text style={styles.tagText}>{task.priority}</Text></View>
-            </Pressable>
-          ))}
-        </View>
+              <Pressable onPress={() => setPlanned(true)} style={styles.primarySmall}><Text style={styles.primarySmallText}>Plan My Day</Text></Pressable>
+            </View>
+
+            <View style={styles.form}>
+              <TextInput value={draft.title} onChangeText={(title) => setDraft({ ...draft, title })} placeholder="Task name" placeholderTextColor="#8b95a7" style={styles.input} />
+              <View style={styles.formRow}>
+                <TextInput value={draft.duration} onChangeText={(duration) => setDraft({ ...draft, duration })} keyboardType="number-pad" placeholder="Duration" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+                <TextInput value={draft.deadline} onChangeText={(deadline) => setDraft({ ...draft, deadline })} placeholder="Deadline" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+              </View>
+              <TextInput value={draft.location} onChangeText={(location) => setDraft({ ...draft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
+              <View style={styles.priorityRow}>
+                {['High', 'Medium', 'Low'].map((priority) => (
+                  <Pressable key={priority} onPress={() => setDraft({ ...draft, priority })} style={[styles.priority, draft.priority === priority && styles.priorityActive]}>
+                    <Text style={[styles.priorityText, draft.priority === priority && styles.priorityTextActive]}>{priority}</Text>
+                  </Pressable>
+                ))}
+                <Pressable onPress={addTask} style={styles.addButton}><Text style={styles.addButtonText}>Save Task</Text></Pressable>
+              </View>
+            </View>
+
+            <View style={styles.taskList}>
+              {tasks.map((task) => (
+                <Pressable key={task.id} onPress={() => toggleTask(task.id)} style={[styles.taskCard, task.complete && styles.completeTask]}>
+                  <View style={[styles.checkbox, task.complete && styles.checked]}><Text style={styles.checkmark}>{task.complete ? '✓' : ''}</Text></View>
+                  <View style={styles.fill}>
+                    <Text style={styles.taskTitle}>{task.title}</Text>
+                    <Text style={styles.muted}>{task.duration} min · {task.deadline}</Text>
+                    <Text style={styles.place}>⌖ {task.location}</Text>
+                  </View>
+                  <View style={[styles.tag, styles[`tag${task.priority}`]]}><Text style={styles.tagText}>{task.priority}</Text></View>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
 
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.kicker}>FIXED SCHEDULE</Text>
-            <Text style={styles.sectionTitle}>{selectedDay} fixed events</Text>
+            <Text style={styles.sectionTitle}>{activeDay} fixed events</Text>
           </View>
+          {scheduleSetupComplete && (
+            <Pressable onPress={editWeeklySchedule} style={styles.secondarySmall}><Text style={styles.secondarySmallText}>Edit Week</Text></Pressable>
+          )}
         </View>
 
-        <View style={styles.form}>
-          <Text style={styles.formHint}>Adding to {selectedDay}</Text>
-          <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
-          <View style={styles.formRow}>
-            <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-            <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+        {!scheduleSetupComplete && (
+          <View style={styles.form}>
+            <Text style={styles.formHint}>Adding to {selectedDay}</Text>
+            <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
+            <View style={styles.formRow}>
+              <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+              <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+            </View>
+            <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
+            <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Fixed Event to {selectedDay}</Text></Pressable>
           </View>
-          <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
-          <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Fixed Event to {selectedDay}</Text></Pressable>
-        </View>
+        )}
 
         <View style={styles.taskList}>
-          {todaySchedule.length === 0 && (
+          {activeSchedule.length === 0 && (
             <View style={styles.emptyDayCard}>
               <Text style={styles.emptyTitle}>No fixed events</Text>
-              <Text style={styles.muted}>This day is open for tasks, errands, studying, appointments, and recovery time.</Text>
+              <Text style={styles.muted}>{scheduleSetupComplete ? 'Today is open for tasks, errands, appointments, and recovery time.' : 'This day is open. Add fixed events here if this weekday has any.'}</Text>
             </View>
           )}
-          {todaySchedule.map((item) => (
+          {activeSchedule.map((item) => (
             <View key={item.id} style={styles.commitmentCard}>
               <View style={styles.classIcon}><Text style={styles.classIconText}>C</Text></View>
               <View style={styles.fill}>
@@ -486,105 +521,109 @@ export default function App() {
           ))}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.kicker}>RECOMMENDATIONS</Text>
-            <Text style={styles.sectionTitle}>What fits in your gaps</Text>
-          </View>
-        </View>
-
-        <View style={styles.recommendationList}>
-          {recommendations.map((gap) => (
-            <View key={gap.id} style={styles.recommendationCard}>
-              <View style={styles.recommendationTop}>
-                <View>
-                  <Text style={styles.gapTime}>{formatTime(gap.start)} - {formatTime(gap.end)}</Text>
-                  <Text style={styles.muted}>{gap.gapMinutes} min open · before {gap.nextTitle}</Text>
-                </View>
-                <Text style={styles.gapBadge}>GAP</Text>
+        {scheduleSetupComplete && (
+          <>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.kicker}>RECOMMENDATIONS</Text>
+                <Text style={styles.sectionTitle}>What fits today</Text>
               </View>
-
-              {gap.suggestion ? (
-                <View style={styles.suggestionBox}>
-                  <Text style={styles.suggestionTitle}>{gap.suggestion.task.title}</Text>
-                  <Text style={styles.muted}>{gap.suggestion.task.location} · {gap.suggestion.task.priority} priority · {gap.suggestion.task.deadline}</Text>
-                  <View style={styles.timeBreakdown}>
-                    <Text style={styles.breakdownText}>{gap.suggestion.travelToTask}m there</Text>
-                    <Text style={styles.breakdownText}>{gap.suggestion.task.duration}m task</Text>
-                    <Text style={styles.breakdownText}>{gap.suggestion.travelToNext}m next</Text>
-                  </View>
-                  <Text style={styles.fitText}>Needs {gap.suggestion.totalTime} min · leaves {gap.suggestion.buffer} min buffer</Text>
-                </View>
-              ) : (
-                <View style={styles.suggestionBox}>
-                  <Text style={styles.suggestionTitle}>No task fits yet</Text>
-                  <Text style={styles.muted}>Add a shorter task or pick a gap with more open time.</Text>
-                </View>
-              )}
             </View>
-          ))}
-        </View>
 
-        <View style={styles.planPanel}>
-          <View style={styles.panelTop}>
-            <View>
-              <Text style={styles.kicker}>PLANNING ENGINE</Text>
-              <Text style={styles.sectionTitle}>{scenario === 'delay' ? 'Replanned around change' : 'Your optimal plan'}</Text>
-            </View>
-            <Text style={styles.planBadge}>{planned ? 'OPTIMIZED' : 'DRAFT'}</Text>
-          </View>
+            <View style={styles.recommendationList}>
+              {recommendations.map((gap) => (
+                <View key={gap.id} style={styles.recommendationCard}>
+                  <View style={styles.recommendationTop}>
+                    <View>
+                      <Text style={styles.gapTime}>{formatTime(gap.start)} - {formatTime(gap.end)}</Text>
+                      <Text style={styles.muted}>{gap.gapMinutes} min open · before {gap.nextTitle}</Text>
+                    </View>
+                    <Text style={styles.gapBadge}>GAP</Text>
+                  </View>
 
-          {!planned ? (
-            <View style={styles.emptyPlan}>
-              <Text style={styles.emptyTitle}>Ready to coordinate your day</Text>
-              <Text style={styles.mutedCenter}>The local engine will sort by priority, protect fixed commitments, and use mock travel times.</Text>
-              <Pressable onPress={() => setPlanned(true)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Generate Plan</Text></Pressable>
-            </View>
-          ) : (
-            <View style={styles.timeline}>
-              {scenario === 'delay' && (
-                <View style={styles.alert}>
-                  <Text style={styles.alertIcon}>!</Text>
-                  <View style={styles.fill}>
-                    <Text style={styles.alertTitle}>Something changed</Text>
-                    <Text style={styles.alertText}>Your priority task took longer, so lunch moved after the next fixed event.</Text>
-                  </View>
-                </View>
-              )}
-
-              {plan.route.map((item, index) => (
-                <View key={`${item.id}-${index}`} style={styles.routeRow}>
-                  <View style={styles.timeCol}>
-                    <Text style={styles.time}>{formatTime(item.start)}</Text>
-                    <Text style={styles.endTime}>{formatTime(item.end)}</Text>
-                  </View>
-                  <View style={styles.rail}>
-                    <View style={[styles.dot, item.kind === 'commitment' && styles.dotCommitment, item.moved && styles.dotMoved]} />
-                    {index < plan.route.length - 1 && <View style={styles.line} />}
-                  </View>
-                  <View style={[styles.routeCard, item.moved && styles.movedCard]}>
-                    <Text style={styles.routeTitle}>{item.title}</Text>
-                    <Text style={styles.muted}>{item.location}{item.travel ? ` · ${item.travel} min travel` : ''}</Text>
-                  </View>
+                  {gap.suggestion ? (
+                    <View style={styles.suggestionBox}>
+                      <Text style={styles.suggestionTitle}>{gap.suggestion.task.title}</Text>
+                      <Text style={styles.muted}>{gap.suggestion.task.location} · {gap.suggestion.task.priority} priority · {gap.suggestion.task.deadline}</Text>
+                      <View style={styles.timeBreakdown}>
+                        <Text style={styles.breakdownText}>{gap.suggestion.travelToTask}m there</Text>
+                        <Text style={styles.breakdownText}>{gap.suggestion.task.duration}m task</Text>
+                        <Text style={styles.breakdownText}>{gap.suggestion.travelToNext}m next</Text>
+                      </View>
+                      <Text style={styles.fitText}>Needs {gap.suggestion.totalTime} min · leaves {gap.suggestion.buffer} min buffer</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.suggestionBox}>
+                      <Text style={styles.suggestionTitle}>No task fits yet</Text>
+                      <Text style={styles.muted}>Add a shorter task or use a day with more open time.</Text>
+                    </View>
+                  )}
                 </View>
               ))}
-
-              <View style={styles.replanGrid}>
-                <Pressable onPress={() => setScenario('delay')} style={[styles.replanButton, scenario === 'delay' && styles.replanActive]}><Text style={styles.replanText}>Task took longer</Text></Pressable>
-                <Pressable onPress={() => setScenario('normal')} style={styles.replanButton}><Text style={styles.replanText}>Restore plan</Text></Pressable>
-              </View>
             </View>
-          )}
-        </View>
 
-        <View style={styles.summary}>
-          <Text style={styles.trophy}>🏆</Text>
-          <Text style={styles.summaryTitle}>Day Optimized</Text>
-          <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.completed}</Text><Text style={styles.summaryText}>tasks completed</Text></View>
-          <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.travelTotal}</Text><Text style={styles.summaryText}>min travel time</Text></View>
-          <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.buffer}</Text><Text style={styles.summaryText}>min buffer saved</Text></View>
-          <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.missed}</Text><Text style={styles.summaryText}>commitments missed</Text></View>
-        </View>
+            <View style={styles.planPanel}>
+              <View style={styles.panelTop}>
+                <View>
+                  <Text style={styles.kicker}>PLANNING ENGINE</Text>
+                  <Text style={styles.sectionTitle}>{scenario === 'delay' ? 'Replanned around change' : `Today's plan`}</Text>
+                </View>
+                <Text style={styles.planBadge}>{planned ? 'OPTIMIZED' : 'DRAFT'}</Text>
+              </View>
+
+              {!planned ? (
+                <View style={styles.emptyPlan}>
+                  <Text style={styles.emptyTitle}>Ready to coordinate today</Text>
+                  <Text style={styles.mutedCenter}>The local engine will sort by priority, protect fixed commitments, and use mock travel times.</Text>
+                  <Pressable onPress={() => setPlanned(true)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Generate Plan</Text></Pressable>
+                </View>
+              ) : (
+                <View style={styles.timeline}>
+                  {scenario === 'delay' && (
+                    <View style={styles.alert}>
+                      <Text style={styles.alertIcon}>!</Text>
+                      <View style={styles.fill}>
+                        <Text style={styles.alertTitle}>Something changed</Text>
+                        <Text style={styles.alertText}>Your priority task took longer, so lunch moved after the next fixed event.</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {plan.route.map((item, index) => (
+                    <View key={`${item.id}-${index}`} style={styles.routeRow}>
+                      <View style={styles.timeCol}>
+                        <Text style={styles.time}>{formatTime(item.start)}</Text>
+                        <Text style={styles.endTime}>{formatTime(item.end)}</Text>
+                      </View>
+                      <View style={styles.rail}>
+                        <View style={[styles.dot, item.kind === 'commitment' && styles.dotCommitment, item.moved && styles.dotMoved]} />
+                        {index < plan.route.length - 1 && <View style={styles.line} />}
+                      </View>
+                      <View style={[styles.routeCard, item.moved && styles.movedCard]}>
+                        <Text style={styles.routeTitle}>{item.title}</Text>
+                        <Text style={styles.muted}>{item.location}{item.travel ? ` · ${item.travel} min travel` : ''}</Text>
+                      </View>
+                    </View>
+                  ))}
+
+                  <View style={styles.replanGrid}>
+                    <Pressable onPress={() => setScenario('delay')} style={[styles.replanButton, scenario === 'delay' && styles.replanActive]}><Text style={styles.replanText}>Task took longer</Text></Pressable>
+                    <Pressable onPress={() => setScenario('normal')} style={styles.replanButton}><Text style={styles.replanText}>Restore plan</Text></Pressable>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.summary}>
+              <Text style={styles.trophy}>🏆</Text>
+              <Text style={styles.summaryTitle}>Day Optimized</Text>
+              <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.completed}</Text><Text style={styles.summaryText}>tasks completed</Text></View>
+              <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.travelTotal}</Text><Text style={styles.summaryText}>min travel time</Text></View>
+              <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.buffer}</Text><Text style={styles.summaryText}>min buffer saved</Text></View>
+              <View style={styles.summaryRow}><Text style={styles.summaryMetric}>{plan.stats.missed}</Text><Text style={styles.summaryText}>commitments missed</Text></View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -624,6 +663,9 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#071936', fontSize: 19, fontWeight: '900' },
   primarySmall: { backgroundColor: '#1677ff', borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
   primarySmallText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  secondarySmall: { backgroundColor: '#eef4ff', borderColor: '#cfe0ff', borderWidth: 1, borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
+  secondarySmallText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
+  setupCard: { marginTop: 12, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 14, gap: 10 },
   form: { backgroundColor: '#eefaf1', borderWidth: 1, borderColor: '#b7e3c1', borderRadius: 8, padding: 12, gap: 9 },
   formHint: { color: '#0f7a3b', fontSize: 12, fontWeight: '900' },
   input: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 7, height: 42, paddingHorizontal: 11, color: '#10233f', fontSize: 13 },
