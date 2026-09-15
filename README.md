@@ -1,31 +1,31 @@
 # DayRoute
 
-**DayRoute: a weekly class-aware planner that uses time gaps, priority, and location to suggest what task to do next.**
+**DayRoute: a weekly fixed-schedule-aware planner that uses time gaps, priority, and location to suggest what task to do next.**
 
 Not just a to-do list. Not just navigation. The key idea is:
 
-> "The app knows my weekly fixed schedule, knows today's date/day, finds free gaps between classes, and recommends the best tasks I can realistically complete based on time, priority, and location."
+> "The app knows my weekly fixed schedule, knows today's date/day, finds free gaps between fixed events, and recommends the best tasks I can realistically complete based on time, priority, and location."
 
 ## Core Features To Build For Demo
 
 ### 1. Weekly Fixed Schedule
 
-User enters classes for Monday-Friday.
+User enters non-movable commitments for the week. These can be classes, work shifts, meetings, appointments, workouts, or family commitments.
 
 Example:
 
-- Monday: Class 9:00-10:15, Class 1:00-2:15
-- Tuesday: Class 11:00-12:15
+- Monday: Fixed event 9:00-10:15, Fixed event 1:00-2:15
+- Tuesday: Meeting 11:00-12:15
 - Saturday/Sunday: free
 
-The app should know today is Monday/Tuesday/etc. and only use that day's classes.
+The app should know today is Monday/Tuesday/etc. and only use that day's fixed schedule.
 
 ### 2. Today View
 
 Show:
 
 - Today's date/day
-- Today's fixed classes
+- Today's fixed events
 - Free time gaps
 - Suggested tasks for each gap
 
@@ -34,10 +34,10 @@ Example:
 ```text
 Today: Monday
 
-9:00 AM - 10:15 AM: Data Structures
+9:00 AM - 10:15 AM: Data Structures / Work Block
 10:15 AM - 1:00 PM: Free gap
 Suggestion: Finish CS homework at Library
-1:00 PM - 2:15 PM: Calculus
+1:00 PM - 2:15 PM: Meeting
 2:15 PM - 5:00 PM: Free gap
 Suggestion: Buy groceries near H-E-B
 ```
@@ -71,7 +71,7 @@ Basic logic:
 ```text
 Can the task fit in the gap?
 Is it high priority?
-Is the task location close to current/next class?
+Is the task location close to current/next fixed event?
 Is the deadline soon?
 ```
 
@@ -83,8 +83,8 @@ This is where Google Maps fits.
 
 Use Google Maps for:
 
-- calculating travel time between current location, task location, and next class
-- showing whether a task is realistic before the next class
+- calculating travel time between current location, task location, and next fixed event
+- showing whether a task is realistic before the next fixed event
 - eventually opening directions to the task location
 
 For demo today, use mock travel times. In presentation, say:
@@ -99,7 +99,7 @@ Use it in exactly these places:
 
 ```text
 Library -> Ingram Hall = 12 min
-Cafe -> Class = 8 min
+Cafe -> Meeting = 8 min
 Home -> Campus = 20 min
 ```
 
@@ -110,7 +110,7 @@ If you have a 90-minute gap:
 ```text
 Walk to library: 8 min
 Task duration: 60 min
-Walk to next class: 10 min
+Walk to next event: 10 min
 Total: 78 min
 ```
 
@@ -140,9 +140,9 @@ Do **not** build full Google Maps today unless everything else is done. Use mock
 Build:
 
 - 7-day schedule data
-- classes grouped by day
+- fixed events grouped by day
 - app detects today's weekday
-- shows only today's classes
+- shows only today's fixed events
 - Saturday/Sunday show as free days
 
 Their goal:
@@ -153,14 +153,14 @@ Their goal:
 
 Build:
 
-- find gaps between classes
+- find gaps between fixed events
 - compare gap length with task duration
 - rank tasks by priority and deadline
 - suggest tasks that fit
 
 Their goal:
 
-> "The app tells the user what they can do between classes."
+> "The app tells the user what they can do between fixed schedule events."
 
 ### Person 3: UI + Demo Flow
 
@@ -209,7 +209,7 @@ Your categories are **navigation** and **productivity**, so say:
 
 Must build:
 
-1. weekly class schedule
+1. weekly fixed schedule
 2. today-aware schedule
 3. free gap detection
 4. task suggestions

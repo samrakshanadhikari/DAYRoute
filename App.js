@@ -22,21 +22,21 @@ const travelTimes = {
 };
 
 const dayStart = 14 * 60 + 5;
+const dayEnd = 21 * 60;
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const classDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const todayName = weekdays[new Date().getDay()];
 
 const seedTasks = [
-  { id: 'architecture', title: 'Architecture HW', duration: 45, deadline: 'Today 3:00 PM', location: locations.library, priority: 'High', complete: false },
+  { id: 'architecture', title: 'Finish project work', duration: 45, deadline: 'Today 3:00 PM', location: locations.library, priority: 'High', complete: false },
   { id: 'lunch', title: 'Lunch', duration: 20, deadline: 'Flexible', location: locations.nearby, priority: 'Medium', complete: false },
   { id: 'groceries', title: 'Groceries', duration: 40, deadline: 'Today 6:00 PM', location: locations.heb, priority: 'Low', complete: false },
-  { id: 'cv', title: 'CV Assignment', duration: 90, deadline: 'Tomorrow', location: locations.home, priority: 'Medium', complete: false },
+  { id: 'cv', title: 'Update resume', duration: 90, deadline: 'Tomorrow', location: locations.home, priority: 'Medium', complete: false },
 ];
 
 const seedWeeklySchedule = {
   Sunday: [],
   Monday: [
-    { id: 'mon-data-structures', title: 'Data Structures Class', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
+    { id: 'mon-data-structures', title: 'Data Structures / Work Block', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
     { id: 'mon-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
   ],
   Tuesday: [
@@ -44,7 +44,7 @@ const seedWeeklySchedule = {
     { id: 'tue-lab', title: 'Project Lab', startsAt: 15 * 60 + 30, duration: 60, location: locations.ingram, fixed: true },
   ],
   Wednesday: [
-    { id: 'wed-data-structures', title: 'Data Structures Class', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
+    { id: 'wed-data-structures', title: 'Data Structures / Work Block', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
     { id: 'wed-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
   ],
   Thursday: [
@@ -173,7 +173,86 @@ function planDay(tasks, commitments, scenario) {
   };
 }
 
-const getDayLabel = (day) => classDays.includes(day) ? `${day} classes` : `${day} is open`;
+const getDayLabel = (day, items) => items.length ? `${day} fixed schedule` : `${day} is open`;
+
+const getDeadlineScore = (deadline) => {
+  const text = deadline.toLowerCase();
+  if (text.includes('today')) return 0;
+  if (text.includes('tomorrow')) return 1;
+  if (text.includes('flex')) return 3;
+  return 2;
+};
+
+const findScheduleGaps = (commitments) => {
+  const sorted = [...commitments].sort((a, b) => a.startsAt - b.startsAt);
+  const gaps = [];
+  let cursor = dayStart;
+  let previousLocation = locations.current;
+
+  sorted.forEach((item) => {
+    if (item.startsAt > cursor) {
+      gaps.push({
+        id: `gap-${cursor}-${item.startsAt}`,
+        start: cursor,
+        end: item.startsAt,
+        fromLocation: previousLocation,
+        nextLocation: item.location,
+        nextTitle: item.title,
+      });
+    }
+    cursor = Math.max(cursor, item.startsAt + item.duration);
+    previousLocation = item.location;
+  });
+
+  if (cursor < dayEnd) {
+    gaps.push({
+      id: `gap-${cursor}-${dayEnd}`,
+      start: cursor,
+      end: dayEnd,
+      fromLocation: previousLocation,
+      nextLocation: null,
+      nextTitle: 'End of day',
+    });
+  }
+
+  return gaps;
+};
+
+const recommendTasks = (tasks, gaps) => {
+  const priorityScore = { High: 0, Medium: 1, Low: 2 };
+  const openTasks = tasks.filter((task) => !task.complete);
+
+  return gaps.map((gap) => {
+    const options = openTasks
+      .map((task) => {
+        const travelToTask = travelService.getTravelTime(gap.fromLocation, task.location);
+        const travelToNext = gap.nextLocation ? travelService.getTravelTime(task.location, gap.nextLocation) : 0;
+        const totalTime = travelToTask + task.duration + travelToNext;
+        const gapMinutes = gap.end - gap.start;
+        const buffer = gapMinutes - totalTime;
+
+        return {
+          task,
+          gap,
+          gapMinutes,
+          travelToTask,
+          travelToNext,
+          totalTime,
+          buffer,
+          fits: buffer >= 0,
+          score: (priorityScore[task.priority] * 100) + (getDeadlineScore(task.deadline) * 20) + travelToTask + task.duration / 10,
+        };
+      })
+      .filter((option) => option.fits)
+      .sort((a, b) => a.score - b.score);
+
+    return {
+      ...gap,
+      gapMinutes: gap.end - gap.start,
+      suggestion: options[0] || null,
+    };
+  });
+};
 
 export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
@@ -184,6 +263,8 @@ export default function App() {
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
   const [classDraft, setClassDraft] = useState({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
   const todaySchedule = useMemo(() => [...(weeklySchedule[selectedDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, selectedDay]);
+  const scheduleGaps = useMemo(() => findScheduleGaps(todaySchedule), [todaySchedule]);
+  const recommendations = useMemo(() => recommendTasks(tasks, scheduleGaps), [tasks, scheduleGaps]);
   const plan = useMemo(() => planDay(tasks, todaySchedule, scenario), [tasks, todaySchedule, scenario]);
 
   const addTask = () => {
@@ -213,7 +294,7 @@ export default function App() {
 
   const addCommitment = () => {
     if (!classDraft.title.trim()) {
-      Alert.alert('Add a class name', `Enter a class or commitment name for ${selectedDay}.`);
+      Alert.alert('Add a fixed event', `Enter a class, meeting, shift, appointment, or commitment for ${selectedDay}.`);
       return;
     }
 
@@ -252,14 +333,14 @@ export default function App() {
         <View style={styles.hero}>
           <Text style={styles.date}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
           <Text style={styles.title}>{selectedDay === todayName ? 'Plan today.' : `Preview ${selectedDay}.`}</Text>
-          <Text style={styles.subtitle}>DayRoute loads the right fixed schedule, finds your open time, and protects your next class.</Text>
+          <Text style={styles.subtitle}>DayRoute loads your fixed schedule, finds open time, and suggests realistic tasks by priority, location, and time needed.</Text>
         </View>
 
         <View style={styles.locationCard}>
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
             <Text style={styles.locationName}>{locations.current}</Text>
-            <Text style={styles.muted}>{getDayLabel(selectedDay)} · {todaySchedule.length} fixed item{todaySchedule.length === 1 ? '' : 's'}</Text>
+            <Text style={styles.muted}>{getDayLabel(selectedDay, todaySchedule)} · {todaySchedule.length} fixed item{todaySchedule.length === 1 ? '' : 's'} · {scheduleGaps.length} open gap{scheduleGaps.length === 1 ? '' : 's'}</Text>
           </View>
         </View>
 
@@ -314,26 +395,26 @@ export default function App() {
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.kicker}>FIXED SCHEDULE</Text>
-            <Text style={styles.sectionTitle}>{selectedDay} classes</Text>
+            <Text style={styles.sectionTitle}>{selectedDay} fixed events</Text>
           </View>
         </View>
 
         <View style={styles.form}>
           <Text style={styles.formHint}>Adding to {selectedDay}</Text>
-          <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class name" placeholderTextColor="#8b95a7" style={styles.input} />
+          <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
           <View style={styles.formRow}>
             <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
             <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
           </View>
           <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
-          <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Class to {selectedDay}</Text></Pressable>
+          <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Fixed Event to {selectedDay}</Text></Pressable>
         </View>
 
         <View style={styles.taskList}>
           {todaySchedule.length === 0 && (
             <View style={styles.emptyDayCard}>
-              <Text style={styles.emptyTitle}>No fixed classes</Text>
-              <Text style={styles.muted}>This day is open for tasks, errands, studying, and recovery time.</Text>
+              <Text style={styles.emptyTitle}>No fixed events</Text>
+              <Text style={styles.muted}>This day is open for tasks, errands, studying, appointments, and recovery time.</Text>
             </View>
           )}
           {todaySchedule.map((item) => (
@@ -344,6 +425,45 @@ export default function App() {
                 <Text style={styles.muted}>{formatTime(item.startsAt)} - {formatTime(item.startsAt + item.duration)} · {item.location}</Text>
               </View>
               <Text style={styles.fixedBadge}>FIXED</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.kicker}>RECOMMENDATIONS</Text>
+            <Text style={styles.sectionTitle}>What fits in your gaps</Text>
+          </View>
+        </View>
+
+        <View style={styles.recommendationList}>
+          {recommendations.map((gap) => (
+            <View key={gap.id} style={styles.recommendationCard}>
+              <View style={styles.recommendationTop}>
+                <View>
+                  <Text style={styles.gapTime}>{formatTime(gap.start)} - {formatTime(gap.end)}</Text>
+                  <Text style={styles.muted}>{gap.gapMinutes} min open · before {gap.nextTitle}</Text>
+                </View>
+                <Text style={styles.gapBadge}>GAP</Text>
+              </View>
+
+              {gap.suggestion ? (
+                <View style={styles.suggestionBox}>
+                  <Text style={styles.suggestionTitle}>{gap.suggestion.task.title}</Text>
+                  <Text style={styles.muted}>{gap.suggestion.task.location} · {gap.suggestion.task.priority} priority · {gap.suggestion.task.deadline}</Text>
+                  <View style={styles.timeBreakdown}>
+                    <Text style={styles.breakdownText}>{gap.suggestion.travelToTask}m there</Text>
+                    <Text style={styles.breakdownText}>{gap.suggestion.task.duration}m task</Text>
+                    <Text style={styles.breakdownText}>{gap.suggestion.travelToNext}m next</Text>
+                  </View>
+                  <Text style={styles.fitText}>Needs {gap.suggestion.totalTime} min · leaves {gap.suggestion.buffer} min buffer</Text>
+                </View>
+              ) : (
+                <View style={styles.suggestionBox}>
+                  <Text style={styles.suggestionTitle}>No task fits yet</Text>
+                  <Text style={styles.muted}>Add a shorter task or pick a gap with more open time.</Text>
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -370,7 +490,7 @@ export default function App() {
                   <Text style={styles.alertIcon}>!</Text>
                   <View style={styles.fill}>
                     <Text style={styles.alertTitle}>Something changed</Text>
-                    <Text style={styles.alertText}>Architecture HW took longer, so lunch moved after class.</Text>
+                    <Text style={styles.alertText}>Your priority task took longer, so lunch moved after the next fixed event.</Text>
                   </View>
                 </View>
               )}
@@ -460,6 +580,16 @@ const styles = StyleSheet.create({
   taskCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dfe6ef', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   commitmentCard: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#cfe0ff', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   emptyDayCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dfe6ef', borderRadius: 8, padding: 14, gap: 4 },
+  recommendationList: { gap: 10 },
+  recommendationCard: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 13, gap: 11 },
+  recommendationTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  gapTime: { color: '#10233f', fontSize: 15, fontWeight: '900' },
+  gapBadge: { color: '#0f7a3b', backgroundColor: '#dcfce7', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: '900' },
+  suggestionBox: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#e1e9f5', borderRadius: 8, padding: 11, gap: 5 },
+  suggestionTitle: { color: '#071936', fontSize: 15, fontWeight: '900' },
+  timeBreakdown: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginTop: 3 },
+  breakdownText: { color: '#174ea6', backgroundColor: '#e8f1ff', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: '800' },
+  fitText: { color: '#0f7a3b', fontSize: 12, fontWeight: '900', marginTop: 2 },
   classIcon: { width: 28, height: 28, borderRadius: 7, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
   classIconText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
   fixedBadge: { color: '#174ea6', fontSize: 10, fontWeight: '900' },
