@@ -22,6 +22,9 @@ const travelTimes = {
 };
 
 const dayStart = 14 * 60 + 5;
+const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const classDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const todayName = weekdays[new Date().getDay()];
 
 const seedTasks = [
   { id: 'architecture', title: 'Architecture HW', duration: 45, deadline: 'Today 3:00 PM', location: locations.library, priority: 'High', complete: false },
@@ -30,10 +33,28 @@ const seedTasks = [
   { id: 'cv', title: 'CV Assignment', duration: 90, deadline: 'Tomorrow', location: locations.home, priority: 'Medium', complete: false },
 ];
 
-const seedCommitments = [
-  { id: 'class', title: 'Data Structures Class', startsAt: 15 * 60 + 30, duration: 75, location: locations.ingram, fixed: true },
-  { id: 'lab', title: 'Project Lab', startsAt: 18 * 60 + 30, duration: 60, location: locations.library, fixed: true },
-];
+const seedWeeklySchedule = {
+  Sunday: [],
+  Monday: [
+    { id: 'mon-data-structures', title: 'Data Structures Class', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
+    { id: 'mon-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
+  ],
+  Tuesday: [
+    { id: 'tue-ai', title: 'AI Lecture', startsAt: 11 * 60, duration: 75, location: locations.library, fixed: true },
+    { id: 'tue-lab', title: 'Project Lab', startsAt: 15 * 60 + 30, duration: 60, location: locations.ingram, fixed: true },
+  ],
+  Wednesday: [
+    { id: 'wed-data-structures', title: 'Data Structures Class', startsAt: 9 * 60, duration: 75, location: locations.ingram, fixed: true },
+    { id: 'wed-calculus', title: 'Calculus', startsAt: 13 * 60, duration: 75, location: locations.ingram, fixed: true },
+  ],
+  Thursday: [
+    { id: 'thu-ai', title: 'AI Lecture', startsAt: 11 * 60, duration: 75, location: locations.library, fixed: true },
+  ],
+  Friday: [
+    { id: 'fri-seminar', title: 'Team Seminar', startsAt: 10 * 60, duration: 50, location: locations.library, fixed: true },
+  ],
+  Saturday: [],
+};
 
 const pad = (value) => String(value).padStart(2, '0');
 const formatTime = (minutes) => {
@@ -152,14 +173,18 @@ function planDay(tasks, commitments, scenario) {
   };
 }
 
+const getDayLabel = (day) => classDays.includes(day) ? `${day} classes` : `${day} is open`;
+
 export default function App() {
   const [tasks, setTasks] = useState(seedTasks);
-  const [commitments, setCommitments] = useState(seedCommitments);
+  const [weeklySchedule, setWeeklySchedule] = useState(seedWeeklySchedule);
+  const [selectedDay, setSelectedDay] = useState(todayName);
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
   const [classDraft, setClassDraft] = useState({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
-  const plan = useMemo(() => planDay(tasks, commitments, scenario), [tasks, commitments, scenario]);
+  const todaySchedule = useMemo(() => [...(weeklySchedule[selectedDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, selectedDay]);
+  const plan = useMemo(() => planDay(tasks, todaySchedule, scenario), [tasks, todaySchedule, scenario]);
 
   const addTask = () => {
     if (!draft.title.trim()) return;
@@ -182,17 +207,20 @@ export default function App() {
 
   const addCommitment = () => {
     if (!classDraft.title.trim()) return;
-    setCommitments((items) => [
-      ...items,
-      {
+    setWeeklySchedule((schedule) => ({
+      ...schedule,
+      [selectedDay]: [
+        ...(schedule[selectedDay] || []),
+        {
         id: String(Date.now()),
         title: classDraft.title.trim(),
         startsAt: parseClockTime(classDraft.startsAt),
         duration: Number(classDraft.duration) || 60,
         location: classDraft.location.trim() || locations.ingram,
         fixed: true,
-      },
-    ]);
+        },
+      ],
+    }));
     setClassDraft({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
   };
 
@@ -209,17 +237,25 @@ export default function App() {
         </View>
 
         <View style={styles.hero}>
-          <Text style={styles.date}>MONDAY, SEPTEMBER 14, 2026</Text>
-          <Text style={styles.title}>Plan smarter. Go further.</Text>
-          <Text style={styles.subtitle}>Your tasks, locations, and real-world travel time in one day plan.</Text>
+          <Text style={styles.date}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
+          <Text style={styles.title}>{selectedDay === todayName ? 'Plan today.' : `Preview ${selectedDay}.`}</Text>
+          <Text style={styles.subtitle}>DayRoute loads the right fixed schedule, finds your open time, and protects your next class.</Text>
         </View>
 
         <View style={styles.locationCard}>
           <Text style={styles.icon}>⌖</Text>
           <View style={styles.fill}>
             <Text style={styles.locationName}>{locations.current}</Text>
-            <Text style={styles.muted}>Current location · next fixed class is protected</Text>
+            <Text style={styles.muted}>{getDayLabel(selectedDay)} · {todaySchedule.length} fixed item{todaySchedule.length === 1 ? '' : 's'}</Text>
           </View>
+        </View>
+
+        <View style={styles.daySelector}>
+          {weekdays.map((day) => (
+            <Pressable key={day} onPress={() => setSelectedDay(day)} style={[styles.dayButton, selectedDay === day && styles.dayButtonActive]}>
+              <Text style={[styles.dayButtonText, selectedDay === day && styles.dayButtonTextActive]}>{day.slice(0, 3)}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <View style={styles.sectionHeader}>
@@ -264,7 +300,7 @@ export default function App() {
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.kicker}>FIXED SCHEDULE</Text>
-            <Text style={styles.sectionTitle}>Classes and commitments</Text>
+            <Text style={styles.sectionTitle}>{selectedDay} classes</Text>
           </View>
         </View>
 
@@ -281,7 +317,13 @@ export default function App() {
         </View>
 
         <View style={styles.taskList}>
-          {commitments.map((item) => (
+          {todaySchedule.length === 0 && (
+            <View style={styles.emptyDayCard}>
+              <Text style={styles.emptyTitle}>No fixed classes</Text>
+              <Text style={styles.muted}>This day is open for tasks, errands, studying, and recovery time.</Text>
+            </View>
+          )}
+          {todaySchedule.map((item) => (
             <View key={item.id} style={styles.commitmentCard}>
               <View style={styles.classIcon}><Text style={styles.classIconText}>C</Text></View>
               <View style={styles.fill}>
@@ -372,6 +414,11 @@ const styles = StyleSheet.create({
   subtitle: { color: '#4a5a71', fontSize: 14, lineHeight: 20, marginTop: 8 },
   locationCard: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d8e2f1', borderRadius: 8, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
   icon: { color: '#1f6feb', fontSize: 24 },
+  daySelector: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  dayButton: { flex: 1, height: 34, borderRadius: 7, borderWidth: 1, borderColor: '#d4ddea', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  dayButtonActive: { backgroundColor: '#10233f', borderColor: '#10233f' },
+  dayButtonText: { color: '#516177', fontSize: 11, fontWeight: '900' },
+  dayButtonTextActive: { color: '#fff' },
   fill: { flex: 1 },
   locationName: { color: '#10233f', fontSize: 15, fontWeight: '800' },
   muted: { color: '#66768d', fontSize: 12, lineHeight: 17 },
@@ -396,6 +443,7 @@ const styles = StyleSheet.create({
   taskList: { marginTop: 12, gap: 8 },
   taskCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dfe6ef', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   commitmentCard: { backgroundColor: '#f8fbff', borderWidth: 1, borderColor: '#cfe0ff', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  emptyDayCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dfe6ef', borderRadius: 8, padding: 14, gap: 4 },
   classIcon: { width: 28, height: 28, borderRadius: 7, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
   classIconText: { color: '#174ea6', fontSize: 12, fontWeight: '900' },
   fixedBadge: { color: '#174ea6', fontSize: 10, fontWeight: '900' },
