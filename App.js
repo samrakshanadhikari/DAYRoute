@@ -60,6 +60,40 @@ const demoGoogleCalendarEvents = {
   ],
 };
 
+const tomorrowName = weekdays[(new Date().getDay() + 1) % weekdays.length];
+const demoCanvasAssignments = [
+  {
+    id: 'canvas-data-structures-hw',
+    title: 'Data Structures Homework 4',
+    day: todayName,
+    duration: 75,
+    deadline: 'Today 11:59 PM',
+    location: locations.library,
+    priority: 'High',
+    source: 'Canvas',
+  },
+  {
+    id: 'canvas-calculus-quiz',
+    title: 'Calculus Quiz Review',
+    day: todayName,
+    duration: 45,
+    deadline: 'Today 8:00 PM',
+    location: locations.library,
+    priority: 'High',
+    source: 'Canvas',
+  },
+  {
+    id: 'canvas-english-response',
+    title: 'English Reading Response',
+    day: tomorrowName,
+    duration: 35,
+    deadline: 'Tomorrow 11:59 PM',
+    location: locations.home,
+    priority: 'Medium',
+    source: 'Canvas',
+  },
+];
+
 const pad = (value) => String(value).padStart(2, '0');
 const formatTime = (minutes) => {
   const hour24 = Math.floor(minutes / 60) % 24;
@@ -322,6 +356,7 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState(todayName);
   const [scheduleSetupComplete, setScheduleSetupComplete] = useState(false);
   const [calendarImportMessage, setCalendarImportMessage] = useState('');
+  const [canvasImportMessage, setCanvasImportMessage] = useState('');
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
@@ -522,6 +557,28 @@ export default function App() {
     Alert.alert('Google Calendar demo import', message);
   };
 
+  const importDemoCanvasDeadlines = () => {
+    let importedCount = 0;
+
+    setTasks((items) => {
+      const existingIds = new Set(items.map((task) => task.id));
+      const newAssignments = demoCanvasAssignments
+        .filter((assignment) => !existingIds.has(assignment.id))
+        .map((assignment) => ({
+          ...assignment,
+          complete: false,
+        }));
+
+      importedCount = newAssignments.length;
+      return [...items, ...newAssignments];
+    });
+
+    const message = importedCount === 0 ? 'Canvas deadlines already imported' : `Imported ${importedCount} Canvas deadlines`;
+    setCanvasImportMessage(message);
+    setPlanned(false);
+    Alert.alert('Canvas demo import', message);
+  };
+
   const startTaskFromGap = (gap) => {
     setDraft({
       title: '',
@@ -697,6 +754,19 @@ export default function App() {
           </Pressable>
         </View>
 
+        {scheduleSetupComplete && (
+          <View style={styles.canvasImportCard}>
+            <View style={styles.fill}>
+              <Text style={styles.calendarTitle}>Import Canvas deadlines</Text>
+              <Text style={styles.muted}>Demo import converts assignment due dates into prioritized DayRoute tasks.</Text>
+              {!!canvasImportMessage && <Text style={styles.importMessage}>{canvasImportMessage}</Text>}
+            </View>
+            <Pressable onPress={importDemoCanvasDeadlines} style={styles.canvasButton}>
+              <Text style={styles.importButtonText}>Import</Text>
+            </Pressable>
+          </View>
+        )}
+
         {!scheduleSetupComplete && (
           <View style={styles.daySelector}>
             {weekdays.map((day) => (
@@ -789,7 +859,7 @@ export default function App() {
                   </Pressable>
                   <View style={styles.fill}>
                     <Text style={styles.taskTitle}>{task.title}</Text>
-                    <Text style={styles.muted}>{task.duration} min · {task.deadline}</Text>
+                    <Text style={styles.muted}>{task.duration} min · {task.deadline}{task.source ? ` · ${task.source}` : ''}</Text>
                     <Text style={styles.place}>⌖ {task.location}</Text>
                   </View>
                   <View style={styles.cardActions}>
@@ -962,9 +1032,11 @@ const styles = StyleSheet.create({
   subtitle: { color: '#526176', fontSize: 14, lineHeight: 21, marginTop: 10, fontWeight: '600' },
   locationCard: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#d9e4ef', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#10233f', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   calendarImportCard: { marginTop: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d9e4ef', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#10233f', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  canvasImportCard: { marginTop: 12, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', shadowColor: '#9a3412', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   calendarTitle: { color: '#07152f', fontSize: 16, fontWeight: '900' },
   importMessage: { color: '#0f7a3b', fontSize: 12, lineHeight: 17, fontWeight: '900', marginTop: 4 },
   importButton: { backgroundColor: '#1677ff', borderRadius: 9, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  canvasButton: { backgroundColor: '#f97316', borderRadius: 9, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   importButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   icon: { color: '#1677ff', fontSize: 24 },
   daySelector: { flexDirection: 'row', gap: 6, marginTop: 12, flexWrap: 'wrap' },
