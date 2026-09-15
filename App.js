@@ -75,16 +75,24 @@ const formatTime = (minutes) => {
 
 const parseClockTime = (value) => {
   const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
-  if (!match) return 15 * 60 + 30;
+  if (!match) return null;
 
   let hour = Number(match[1]);
   const minute = Number(match[2] || 0);
   const period = match[3]?.toLowerCase();
 
+  if (hour > 23 || minute > 59) return null;
+  if (period && (hour < 1 || hour > 12)) return null;
   if (period === 'pm' && hour < 12) hour += 12;
   if (period === 'am' && hour === 12) hour = 0;
   return hour * 60 + minute;
 };
+
+const hasScheduleConflict = (events, candidate) => events.some((event) => {
+  const eventEnd = event.startsAt + event.duration;
+  const candidateEnd = candidate.startsAt + candidate.duration;
+  return candidate.startsAt < eventEnd && candidateEnd > event.startsAt;
+});
 
 const travelService = {
   getTravelTime(from, to) {
@@ -271,7 +279,7 @@ export default function App() {
   const [planned, setPlanned] = useState(false);
   const [scenario, setScenario] = useState('normal');
   const [draft, setDraft] = useState({ title: '', duration: '30', deadline: 'Flexible', location: locations.library, priority: 'Medium' });
-  const [classDraft, setClassDraft] = useState({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
+  const [classDraft, setClassDraft] = useState({ title: '', startsAt: '', duration: '', location: '' });
   const activeDay = scheduleSetupComplete ? todayName : selectedDay;
   const activeSchedule = useMemo(() => [...(weeklySchedule[activeDay] || [])].sort((a, b) => a.startsAt - b.startsAt), [weeklySchedule, activeDay]);
   const scheduleGaps = useMemo(() => findScheduleGaps(activeSchedule), [activeSchedule]);
@@ -323,14 +331,32 @@ export default function App() {
       return;
     }
 
+    const startsAt = parseClockTime(classDraft.startsAt);
+    if (startsAt === null) {
+      Alert.alert('Check the start time', 'Enter a time like 9:00 AM, 1:30 PM, or 14:30.');
+      return;
+    }
+
+    const duration = Number(classDraft.duration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      Alert.alert('Check the duration', 'Enter how many minutes this fixed event takes, like 50 or 75.');
+      return;
+    }
+
     const newClass = {
       id: `${selectedDay}-${Date.now()}`,
       title: classDraft.title.trim(),
-      startsAt: parseClockTime(classDraft.startsAt),
-      duration: Number(classDraft.duration) || 60,
-      location: classDraft.location.trim() || locations.ingram,
+      startsAt,
+      duration,
+      location: classDraft.location.trim() || 'No location set',
       fixed: true,
     };
+
+    const existingEvents = weeklySchedule[selectedDay] || [];
+    if (hasScheduleConflict(existingEvents, newClass)) {
+      Alert.alert('Schedule conflict', `${newClass.title} overlaps with another fixed event on ${selectedDay}. Pick a different time or duration.`);
+      return;
+    }
 
     setWeeklySchedule((schedule) => ({
       ...schedule,
@@ -340,7 +366,7 @@ export default function App() {
       ],
     }));
     setPlanned(false);
-    setClassDraft({ title: '', startsAt: '3:30 PM', duration: '75', location: locations.ingram });
+    setClassDraft({ title: '', startsAt: '', duration: '', location: '' });
   };
 
   const importDemoCalendar = () => {
@@ -430,11 +456,19 @@ export default function App() {
 
             <View style={styles.form}>
               <Text style={styles.formHint}>Add fixed event to {selectedDay}</Text>
+              <Text style={styles.inputLabel}>Event name</Text>
               <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
               <View style={styles.formRow}>
-                <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-                <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+                <View style={styles.half}>
+                  <Text style={styles.inputLabel}>Start time</Text>
+                  <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="9:00 AM" placeholderTextColor="#8b95a7" style={styles.input} />
+                </View>
+                <View style={styles.half}>
+                  <Text style={styles.inputLabel}>Duration</Text>
+                  <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={styles.input} />
+                </View>
               </View>
+              <Text style={styles.inputLabel}>Location</Text>
               <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
               <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save to {selectedDay}</Text></Pressable>
             </View>
@@ -581,11 +615,19 @@ export default function App() {
         {!scheduleSetupComplete && (
           <View style={styles.form}>
             <Text style={styles.formHint}>Adding to {selectedDay}</Text>
+            <Text style={styles.inputLabel}>Event name</Text>
             <TextInput value={classDraft.title} onChangeText={(title) => setClassDraft({ ...classDraft, title })} placeholder="Class, meeting, shift, or appointment" placeholderTextColor="#8b95a7" style={styles.input} />
             <View style={styles.formRow}>
-              <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="Start time" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
-              <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={[styles.input, styles.half]} />
+              <View style={styles.half}>
+                <Text style={styles.inputLabel}>Start time</Text>
+                <TextInput value={classDraft.startsAt} onChangeText={(startsAt) => setClassDraft({ ...classDraft, startsAt })} placeholder="9:00 AM" placeholderTextColor="#8b95a7" style={styles.input} />
+              </View>
+              <View style={styles.half}>
+                <Text style={styles.inputLabel}>Duration</Text>
+                <TextInput value={classDraft.duration} onChangeText={(duration) => setClassDraft({ ...classDraft, duration })} keyboardType="number-pad" placeholder="Minutes" placeholderTextColor="#8b95a7" style={styles.input} />
+              </View>
             </View>
+            <Text style={styles.inputLabel}>Location</Text>
             <TextInput value={classDraft.location} onChangeText={(location) => setClassDraft({ ...classDraft, location })} placeholder="Location" placeholderTextColor="#8b95a7" style={styles.input} />
             <Pressable onPress={addCommitment} style={styles.saveClassButton}><Text style={styles.addButtonText}>Save Fixed Event to {selectedDay}</Text></Pressable>
           </View>
@@ -764,6 +806,7 @@ const styles = StyleSheet.create({
   finishSetupCard: { marginTop: 14, backgroundColor: '#fff8f1', borderColor: '#fdba74', borderWidth: 1, borderRadius: 8, padding: 14, gap: 10 },
   form: { backgroundColor: '#eefaf1', borderWidth: 1, borderColor: '#b7e3c1', borderRadius: 8, padding: 12, gap: 9 },
   formHint: { color: '#0f7a3b', fontSize: 12, fontWeight: '900' },
+  inputLabel: { color: '#314158', fontSize: 11, fontWeight: '900', marginBottom: -4 },
   input: { backgroundColor: '#fff', borderColor: '#d4ddea', borderWidth: 1, borderRadius: 7, height: 42, paddingHorizontal: 11, color: '#10233f', fontSize: 13 },
   formRow: { flexDirection: 'row', gap: 9 },
   half: { flex: 1 },
